@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { api, API } from './api';
 import { t, locale, apiError } from './i18n.js';
 import Settings from './Settings.jsx';
@@ -7,6 +7,7 @@ import { LogoutDialog, LangPanel, HelpPanel } from './Dialogs.jsx';
 
 import { StudentsPage, DayAttendancePage, RankingsPage, AnalyticsPage, StudentProfile, GroupsPage, TeachersPage, EventsAllPage, Modal } from './Pages.jsx';
 import { Icon, AppIcon, Status } from './icons.jsx';
+import StudentHomeNew, { greeting } from './StudentHome.jsx';
 import { HomeworkStaff, HomeworkMatrix, StudentHomework, StudentRewards } from './Homework.jsx';
 import { Ava, Stat, iso, dayLabel, longDay, relName, addDays, rateText } from './ui.jsx';
 
@@ -22,6 +23,10 @@ const NEXT = { '': 'present', present: 'late', late: 'absent', absent: '', excus
 /* ---------- Davomat jadvali ---------- */
 function AttendanceTable({ groups, gid, setGid, showArchived, to: toProp, setTo: setToProp, title }) {
   const [data, setData] = useState({ days: [], students: [] });
+  // The API returns newest-first; the table shows oldest -> newest (left to right). Only the display order changes.
+  const days = useMemo(() => [...data.days].reverse(), [data.days]);
+  const wrapRef = useRef(null);
+  useEffect(() => { const el = wrapRef.current; if (el) el.scrollLeft = el.scrollWidth; }, [data.days, data.students.length]); // keep the newest day in view on narrow screens
   const [err, setErr] = useState('');
   const [ok, setOk] = useState('');
   const [loading, setLoading] = useState(false);
@@ -72,7 +77,7 @@ function AttendanceTable({ groups, gid, setGid, showArchived, to: toProp, setTo:
   };
   const gname = (groups.find((g) => String(g.id) === String(gid)) || {}).name || 'group';
   const exportCsv = () => {
-    const rows = [['Student', ...data.days], ...data.students.map((s) => [s.full_name, ...data.days.map((d) => s.marks[d] || '')])];
+    const rows = [['Student', ...days], ...data.students.map((s) => [s.full_name, ...days.map((d) => s.marks[d] || '')])];
     const csv = rows.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
     const a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob(['\ufeff' + csv], { type: 'text/csv' }));
@@ -102,12 +107,12 @@ function AttendanceTable({ groups, gid, setGid, showArchived, to: toProp, setTo:
       {!gid && <p className="muted">{t('pickGroupFirst')}</p>}
       {gid && !loading && data.students.length === 0 && <p className="muted">{t('noStudentsInGroup')}</p>}
       {data.students.length > 0 && (
-        <div className="tblwrap attwrap">
+        <div className="tblwrap attwrap" ref={wrapRef}>
           <table className="att">
             <thead>
               <tr>
                 <th className="left stick"><span className="ico-inline"><Icon name="users" size={16} /> {t('students')}</span></th>
-                {data.days.map((d) => { const [a, b] = dayLabel(d); return <th key={d} className={'day ' + (d === today ? 'today' : '')}>{a}<br />{b}</th>; })}
+                {days.map((d) => { const [a, b] = dayLabel(d); return <th key={d} className={'day ' + (d === today ? 'today' : '')}>{a}<br />{b}</th>; })}
               </tr>
             </thead>
             <tbody>
@@ -116,7 +121,7 @@ function AttendanceTable({ groups, gid, setGid, showArchived, to: toProp, setTo:
                   <td className="left stick"><span className="who"><em className="rown">{i + 1}</em><Ava u={s} /> <span className="nm">{s.full_name}</span>
                     {notes[s.id + '|' + to] && <span className="notebadge" title={notes[s.id + '|' + to].caption || ''}><Icon name={NOTE_ICON[notes[s.id + '|' + to].reason]} size={13} /> {t('reason_' + notes[s.id + '|' + to].reason)}</span>}
                     <button type="button" className="notebtn" onClick={() => openNote(s, to)} aria-label={t('absenceNote')} title={t('absenceNote')}><Icon name="note" size={14} /></button></span></td>
-                  {data.days.map((d) => (
+                  {days.map((d) => (
                     <td key={d}><button className={'cell ' + (s.marks[d] || 'none') + (saving[s.id + d] ? ' saving' : '') + (notes[s.id + '|' + d] ? ' hasnote' : '')} disabled={!!saving[s.id + d]} onClick={() => mark(s, d)} aria-label={`${s.full_name} ${d}`} title={notes[s.id + '|' + d] ? `${t('reason_' + notes[s.id + '|' + d].reason)}${notes[s.id + '|' + d].caption ? ': ' + notes[s.id + '|' + d].caption : ''}` : undefined}>{ST[s.marks[d]] || ''}</button></td>
                   ))}
                 </tr>
@@ -131,7 +136,7 @@ function AttendanceTable({ groups, gid, setGid, showArchived, to: toProp, setTo:
           <p className="muted small">{t('noteContext')}</p>
           <label className="muted">{t('date')}
             <select value={noteDlg.date} onChange={(e) => { const dd = e.target.value; const ex = notes[noteDlg.s.id + '|' + dd]; setNoteDlg({ ...noteDlg, date: dd, reason: ex ? ex.reason : noteDlg.reason, caption: ex ? ex.caption || '' : '', exists: !!ex }); }}>
-              {data.days.map((dd) => <option key={dd} value={dd}>{longDay(dd)}</option>)}
+              {days.map((dd) => <option key={dd} value={dd}>{longDay(dd)}</option>)}
             </select>
           </label>
           <div className="chiprow" role="radiogroup" aria-label={t('absenceNote')}>
@@ -386,7 +391,7 @@ function EmailTest({ user }) {
 }
 
 /* ---------- Dashboard ---------- */
-export default function Dashboard({ user, StoryForm, EventForm, Feed, StudentHome, StudentRanking, onHwDeep, hwDeep, onChat, unread, reload, theme, setTheme, lang, changeLang }) {
+export default function Dashboard({ user, StoryForm, EventForm, Feed, StudentHome, StoryViewer, StudentRanking, onHwDeep, hwDeep, onChat, unread, reload, theme, setTheme, lang, changeLang }) {
   const [page, setPage] = useState('home');
   const [groups, setGroups] = useState([]);
   const [side, setSide] = useState(false);
@@ -446,13 +451,13 @@ export default function Dashboard({ user, StoryForm, EventForm, Feed, StudentHom
   const langName = { en: 'English', uz: "O'zbek", zh: '中文', tr: 'Türkçe', ru: 'Русский' }[lang];
 
   return (
-    <div className={'dash' + (isStudent ? ' sdash' : '')}>
+    <div className={'dash' + (isStudent ? ' stu' : '')}>
       {side && <div className="dscrim" onClick={() => setSide(false)} />}
       <aside className={'dside ' + (side ? 'open' : '')}>
         <div className="dlogo"><img src="/eagle.png" alt="" /><div><b>Valid EduAction</b><small>Learn • Grow • Succeed</small></div></div>
         <div className="dnav">
           {nav.map(([k, ic]) => (
-            <button key={k} className={navActive === k ? 'on' : ''} onClick={() => (k === 'community' ? (setSide(false), onChat()) : go(k))}><span className="ic"><AppIcon name={ic} size={24} /></span><span className="lbl">{t(k)}</span></button>
+            <button key={k} title={t(k)} aria-label={t(k)} className={navActive === k ? 'on' : ''} onClick={() => (k === 'community' ? (setSide(false), onChat()) : go(k))}><span className="ic"><AppIcon name={ic} size={24} /></span><span className="lbl">{t(k)}</span></button>
           ))}
         </div>
         <div className="dbottom">
@@ -461,14 +466,12 @@ export default function Dashboard({ user, StoryForm, EventForm, Feed, StudentHom
         </div>
       </aside>
 
-      <main className={'dmain' + (!isAdmin && !isStudent ? ' hasbnav' : '')} ref={mainRef}>
+      <main className={'dmain' + (!isAdmin ? ' hasbnav' : '')} ref={mainRef}>
         <header className="dhead">
           <button className="dburger" onClick={() => setSide(true)} aria-label="menu"><Icon name="menu" size={22} /></button>
-          <div className="dtitle">
-            {isStudent && page === 'home'
-              ? <><h1>{(() => { const h = new Date().getHours(); return h < 12 ? t('goodMorning') : h < 18 ? t('goodAfternoon') : t('goodEvening'); })()}, <span className="hl">{user.full_name.split(' ')[0]}</span>!</h1><p>{t('keepLearning')}</p></>
-              : <><h1>{t(titleKey)}</h1><p>{t('welcome')}, {user.full_name.split(' ')[0]}!</p></>}
-          </div>
+          {isStudent && page === 'home'
+            ? <div className="dtitle"><h1>{greeting()}, <span className="hl">{user.full_name.split(' ')[0]}</span>! <Icon name="wave" size={26} className="wavei" /></h1><p>{t('keepLearning')}</p></div>
+            : <div className="dtitle"><h1>{t(titleKey)}</h1><p>{t('welcome')}, {user.full_name.split(' ')[0]}!</p></div>}
           <div className="dright">
             <button className="dchat" onClick={onChat} aria-label="chat"><Icon name="chat" size={20} />{unread > 0 && <i>{unread > 9 ? '9+' : unread}</i>}</button>
             <button className="dtheme" onClick={toggleTheme} aria-label="theme">{theme === 'dark' ? <Icon name="moon" size={20} /> : <Icon name="sun" size={20} />}</button>
@@ -504,7 +507,7 @@ export default function Dashboard({ user, StoryForm, EventForm, Feed, StudentHom
         {/* Lists stay mounted (hidden) while a profile is open so filters/scroll survive "Back" */}
         <div style={{ display: detail ? 'none' : 'block' }}>
           {page === 'home' && !isStudent && <Home groups={groups} user={user} Feed={Feed} nav={navTo} onOpen={openStudent} />}
-          {isStudent && page === 'home' && StudentHome && <StudentHome user={user} desktop nav={navTo} onHomework={() => navTo('homework')} />}
+          {isStudent && page === 'home' && <StudentHomeNew user={user} nav={navTo} onHomework={() => navTo('homework')} StoryViewer={StoryViewer} />}
           {isStudent && page === 'homework' && <StudentHomework me={user} onDeep={onHwDeep} />}
           {isStudent && page === 'events' && <EventsAllPage />}
           {isStudent && page === 'ranking' && StudentRanking && <StudentRanking me={user} />}
@@ -517,7 +520,7 @@ export default function Dashboard({ user, StoryForm, EventForm, Feed, StudentHom
           {page === 'rankings' && <RankingsPage key={'r' + pkey} init={params} onOpen={openStudent} />}
           {page === 'analytics' && <><BackBtn /><AnalyticsPage groups={groups} onOpenDate={(date, groupId) => navTo('dayatt', { date, groupId })} /></>}
           {page === 'attendance' && (<><div className="dtools"><button className="dbtn ghost" onClick={() => navTo('analytics')}><Icon name="rate" size={16} /> {t('attRate')}</button><button className="dbtn ghost" onClick={() => navTo('dayatt', { date: iso(new Date()) })}><Icon name="calendar" size={16} /> {t('dayView')}</button></div><AttendancePage groups={groups} /></>)}
-          {page === 'teachers' && isAdmin && <TeachersPage onNav={navTo} onChat={onChat} />}
+          {page === 'teachers' && isAdmin && <TeachersPage onNav={navTo} />}
           {!isAdmin && ['stories', 'events', 'teachers'].includes(page) && <div className="dcard"><p className="muted">{t('adminOnly')}</p></div>}
           {page === 'homework' && !isStudent && <HomeworkStaff isAdmin={isAdmin} groups={groups} onOpen={openStudent} />}
           {page === 'groups' && <GroupsPage isAdmin={isAdmin} reloadGroups={loadGroups} />}
@@ -529,10 +532,10 @@ export default function Dashboard({ user, StoryForm, EventForm, Feed, StudentHom
         {page === 'settings' && (<><Settings user={user} reload={reload} theme={theme} setTheme={setTheme} lang={lang} changeLang={changeLang} />{isAdmin && <EmailTest user={user} />}</>)}
         {!LIVE.includes(page) && <div className="dcard"><h3>{t(page)}</h3><p className="muted">{t('soon')}</p></div>}
       </main>
-      {!isAdmin && !isStudent && (
+      {!isAdmin && (
         <nav className="dbnav" aria-label="Main">
-          {['home', 'students', 'attendance', 'homework', 'community'].map((k) => (
-            <button key={k} type="button" className={navActive === k ? 'on' : ''} onClick={() => (k === 'community' ? onChat() : go(k))}><AppIcon name={k} size={26} /><span>{t(k)}</span></button>
+          {(isStudent ? ['home', 'events', 'homework', 'profile'] : ['home', 'students', 'attendance', 'homework', 'community']).map((k) => (
+            <button key={k} type="button" className={navActive === k ? 'on' : ''} onClick={() => (k === 'community' ? onChat() : go(k))}>{k === 'profile' ? <Icon name="user" size={24} /> : <AppIcon name={k} size={26} />}<span>{t(k)}</span></button>
           ))}
           <button type="button" onClick={() => setSide(true)}><Icon name="menu" size={22} /><span>{t('more')}</span></button>
         </nav>

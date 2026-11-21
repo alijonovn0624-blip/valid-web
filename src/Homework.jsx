@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { api, API } from './api';
-import { Icon, Status } from './icons.jsx';
-import { t, apiError, locale } from './i18n.js';
+import { Icon } from './icons.jsx';
+import { t, apiError } from './i18n.js';
 import { iso, longDay, dayLabel, Ava } from './ui.jsx';
 import { Modal, MistakesModal } from './Pages.jsx';
+import { useClock, fmtCountdown, fmtWhen, fmtTime, lessonLeft, buildCourse } from './lock.js';
 
 const speak = (w) => { try { const u = new SpeechSynthesisUtterance(w); u.lang = 'en-US'; u.rate = 0.9; window.speechSynthesis.cancel(); window.speechSynthesis.speak(u); } catch { /* speech not supported */ } };
 const artFor = (w) => { let n = 0; for (const c of String(w)) n = (n * 31 + c.charCodeAt(0)) % 997; return API + '/avatars/a' + String((n % 12) + 1).padStart(2, '0') + '.svg'; };
@@ -16,27 +17,6 @@ const emptyEx = (kind = 'choice') => ({ kind, question: '', options: ['', '', ''
 const emptyWord = () => ({ word: '', uz: '', ru: '', definition: '', example: '', imageUrl: '', imageCredit: '', imageProvider: '', imageAssetId: '', imageStyle: '', imageAttributionUrl: '', busy: false, looked: false, imgState: '', cands: [], picker: false });
 const LETTER = (i) => String.fromCharCode(65 + i);
 
-const toLocalInput = (iso) => { if (!iso) return ''; const d = new Date(iso); const p = (n) => String(n).padStart(2, '0'); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`; };
-function Schedule({ id, d }) {
-  const [s, setS] = useState(toLocalInput(d.lesson_start));
-  const [e, setE] = useState(toLocalInput(d.lesson_end));
-  const [msg, setMsg] = useState('');
-  const save = async () => {
-    setMsg('');
-    if (!!s !== !!e) return setMsg('❌ ' + t('hwLessonBoth'));
-    try { await api('/api/homework/' + id, { method: 'PUT', body: { lessonStart: s ? new Date(s).toISOString() : null, lessonEnd: e ? new Date(e).toISOString() : null } }); setMsg('✅ ' + t('hwScheduleSaved')); }
-    catch (x) { setMsg('❌ ' + apiError(x)); }
-  };
-  return (
-    <div className="hwex">
-      <b>{t('hwLessonTime')}</b>
-      <div className="dtools"><input type="datetime-local" value={s} onChange={(x) => setS(x.target.value)} aria-label={t('hwLessonStart')} /><input type="datetime-local" value={e} min={s || undefined} onChange={(x) => setE(x.target.value)} aria-label={t('hwLessonEnd')} />
-        <button type="button" className="dbtn" onClick={save}>{t('save')}</button></div>
-      <small className="muted">{t('hwLessonNote')}</small>
-      {msg && <div className="dnote"><Status msg={msg} /></div>}
-    </div>
-  );
-}
 function HomeworkDetail({ id, onClose, isAdmin, onDeleted }) {
   const [d, setD] = useState(null);
   const [err, setErr] = useState('');
@@ -52,7 +32,6 @@ function HomeworkDetail({ id, onClose, isAdmin, onDeleted }) {
       {d && (
         <div className="hwdetail">
           <p className="muted small">{d.group_name} · {longDay(d.due_date)}</p>
-          {isAdmin && <Schedule id={id} d={d} />}
           {isAdmin && <button type="button" className="dbtn danger" onClick={del}><Icon name="trash" size={15} /> {t('remove')}</button>}
           {d.video_url && <p className="small"><Icon name="play" size={14} /> {t('hwPartVideo')}: <a href={media(d.video_url)} target="_blank" rel="noopener noreferrer">{d.video_url.split('/').pop()}</a>{d.video_description ? ' — ' + d.video_description : ''}</p>}
           {d.exercises.map((e, i) => (
@@ -102,7 +81,7 @@ function ExerciseEditor({ x, i, setEx, remove }) {
 }
 
 function HomeworkForm({ groups, onCreated }) {
-  const [f, setF] = useState({ groupId: '', unit: '', title: '', dueDate: iso(new Date()), description: '', videoUrl: '', videoDescription: '', lessonStart: '', lessonEnd: '' });
+  const [f, setF] = useState({ groupId: '', unitNo: '', lessonNo: '', title: '', dueDate: iso(new Date()), description: '', videoUrl: '', videoDescription: '' });
   const [words, setWords] = useState([]);
   const [exs, setExs] = useState([]);
   const [vBusy, setVBusy] = useState(false);
@@ -148,18 +127,18 @@ function HomeworkForm({ groups, onCreated }) {
     setVBusy(false);
   };
   const submit = async (e) => {
-    e.preventDefault();
-    if (!!f.lessonStart !== !!f.lessonEnd) return setErr(t('hwLessonBoth'));
-    if (f.lessonStart && f.lessonEnd && new Date(f.lessonEnd) <= new Date(f.lessonStart)) return setErr(t('hwLessonOrder')); setErr('');
+    e.preventDefault(); setErr('');
     if (!f.groupId) return setErr(t('chooseGroup'));
+    if (!f.unitNo || !f.lessonNo) return setErr(t('hwUnitNo') + ' / ' + t('hwLessonNo'));
     const exercises = exs.map((x) => (x.kind === 'choice'
       ? { kind: 'choice', question: x.question, options: x.options.filter((o) => o.trim()), answer: x.options[x.correct] || '' }
       : { kind: x.kind, question: x.question, answer: x.answer }));
     const wl = words.filter((w) => w.word.trim()).map((w) => ({ word: w.word, imageUrl: w.imageProvider ? undefined : (w.imageUrl || undefined), imageCredit: w.imageCredit || undefined, imageProvider: w.imageProvider || undefined, imageAssetId: w.imageAssetId || undefined, imageStyle: w.imageStyle || undefined, imageAttributionUrl: w.imageAttributionUrl || undefined, definition: w.definition, example: w.example, phonetic: w.phonetic || undefined, translations: { uz: w.uz, ru: w.ru } }));
     setBusy(true);
     try {
-      await api('/api/homework', { method: 'POST', body: { groupId: Number(f.groupId), unit: f.unit, title: f.title, dueDate: f.dueDate, description: f.description, lessonStart: f.lessonStart ? new Date(f.lessonStart).toISOString() : undefined, lessonEnd: f.lessonEnd ? new Date(f.lessonEnd).toISOString() : undefined, videoUrl: f.videoUrl || undefined, videoDescription: f.videoDescription, words: wl, exercises } });
-      setF({ ...f, unit: '', title: '', description: '', videoUrl: '', videoDescription: '', lessonStart: '', lessonEnd: '' }); setWords([]); setExs([]); onCreated();
+      await api('/api/homework', { method: 'POST', body: { groupId: Number(f.groupId), unitNo: Number(f.unitNo), lessonNo: Number(f.lessonNo), title: f.title, dueDate: f.dueDate, description: f.description, videoUrl: f.videoUrl || undefined, videoDescription: f.videoDescription, words: wl, exercises } });
+      const ln = Number(f.lessonNo), un = Number(f.unitNo); // next lesson is pre-selected: 3.1 -> 3.2 -> 3.3 -> 4.1
+      setF({ ...f, unitNo: ln >= 3 ? Math.min(12, un + 1) : un, lessonNo: ln >= 3 ? 1 : ln + 1, title: '', description: '', videoUrl: '', videoDescription: '' }); setWords([]); setExs([]); onCreated();
     } catch (x) { setErr(apiError(x)); }
     setBusy(false);
   };
@@ -169,12 +148,10 @@ function HomeworkForm({ groups, onCreated }) {
       <p className="muted small">{t('hwRewards')}</p>
       <div className="gfgrid">
         <label>{t('group')} *<select value={f.groupId} onChange={set('groupId')} required><option value="">{t('chooseGroup')}</option>{groups.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}</select></label>
-        <label>{t('hwUnit')}<input type="text" value={f.unit} maxLength={60} placeholder="3.3" onChange={set('unit')} /></label>
+        <label>{t('hwUnitNo')} *<select value={f.unitNo} onChange={set('unitNo')} required><option value="">–</option>{Array.from({ length: 12 }, (_, i) => <option key={i + 1} value={i + 1}>{t('unitWord')} {i + 1}</option>)}</select></label>
+        <label>{t('hwLessonNo')} *<select value={f.lessonNo} onChange={set('lessonNo')} required><option value="">–</option>{[1, 2, 3].map((n) => <option key={n} value={n}>{f.unitNo ? `${f.unitNo}.${n}` : n}</option>)}</select></label>
         <label>{t('hwTitle')} *<input type="text" value={f.title} maxLength={120} onChange={set('title')} required /></label>
-        <label>{t('hwDue')} *<input type="date" value={f.dueDate} onChange={set('dueDate')} required /></label>
-        <label>{t('hwLessonStart')}<input type="datetime-local" value={f.lessonStart} onChange={set('lessonStart')} /></label>
-        <label>{t('hwLessonEnd')}<input type="datetime-local" value={f.lessonEnd} min={f.lessonStart || undefined} onChange={set('lessonEnd')} /></label>
-        <small className="muted wide">{t('hwLessonNote')}</small>
+        <label>{t('hwLessonDate')} *<input type="date" value={f.dueDate} onChange={set('dueDate')} required /></label>
         <label className="wide">{t('hwDescription')}<input type="text" value={f.description} maxLength={500} onChange={set('description')} /></label>
       </div>
 
@@ -335,16 +312,9 @@ export function SavedWords({ onClose }) {
 }
 
 /* ---- exercise answer inputs by type ---- */
-function AnswerInput({ e, val, setVal, disabled, onEnter, picked, setPicked, state }) {
+function AnswerInput({ e, val, setVal, disabled, onEnter, picked, setPicked }) {
   if (e.kind === 'choice')
-    return (
-      <div className="hwchoices">{e.options.map((o, k) => (
-        <button key={o} type="button" disabled={disabled} className={'choice' + (val === o ? ' on' : '') + (val === o && state ? ' ' + state : '')} onClick={() => setVal(o)}>
-          <b className="optletter">{LETTER(k)}.</b><span className="optt">{o}</span>
-          <span className={'optcheck' + (val === o ? ' on' : '')}>{val === o && <Icon name={state === 'bad' ? 'close' : 'check'} size={14} />}</span>
-        </button>
-      ))}</div>
-    );
+    return <div className="hwchoices">{e.options.map((o, k) => <button key={o} type="button" disabled={disabled} className={'choice' + (val === o ? ' on' : '')} onClick={() => setVal(o)}><b className="optletter">{LETTER(k)}.</b> <span className="opttext">{o}</span><span className="optradio" aria-hidden="true">{val === o && <Icon name="check" size={14} strokeWidth={3} />}</span></button>)}</div>;
   if (e.kind === 'order') {
     return (
       <div className="hworder">
@@ -375,17 +345,19 @@ function Runner({ hw, onBack, onChanged }) {
   const [err, setErr] = useState('');
   const [reward, setReward] = useState(null);
   const [summary, setSummary] = useState(null);
+  const [practice, setPractice] = useState(false); // repeating a finished unit: the server pays nothing and changes nothing
   const isClean = (x) => !!(ans[x.id] && ans[x.id].is_correct);
   const isKeyed = (x) => !!(ans[x.id] && ans[x.id].used_key);
   const isDone = (x) => isClean(x) || isKeyed(x);
+  const settled = (x) => !practice && isDone(x); // in practice mode every exercise is open again
   const [i, setI] = useState(() => { const k = ex.findIndex((x) => !(hw.mine.answers.find((a) => a.exercise_id === x.id && (a.is_correct || a.used_key)))); return k < 0 ? 0 : k; });
   const e = ex[i];
   const d = (e && draft[e.id]) || { val: '', picked: [] };
   const setVal = (v) => setDraft((m) => ({ ...m, [e.id]: { val: v, picked: [] } }));
   const setPicked = (arr) => setDraft((m) => ({ ...m, [e.id]: { picked: arr, val: arr.map((ix) => e.options[ix]).join(' ') } }));
   const has = (x) => !!(draft[x.id] && draft[x.id].val.trim());
-  const answered = ex.filter((x) => isDone(x) || has(x)).length;
-  const pending = ex.filter((x) => !isDone(x) && has(x) && !(res[x.id] && res[x.id].val === draft[x.id].val)); // new or edited answers still to check
+  const answered = ex.filter((x) => settled(x) || has(x)).length;
+  const pending = ex.filter((x) => !settled(x) && has(x) && !(res[x.id] && res[x.id].val === draft[x.id].val)); // new or edited answers still to check
   const go = (n) => { setI(n); setErr(''); };
   const base = (x) => `/api/homework/${hw.id}/exercises/${x.id}`;
 
@@ -397,8 +369,8 @@ function Runner({ hw, onBack, onChanged }) {
         const val = draft[x.id].val;
         const r = await api(base(x) + '/answer', { method: 'POST', body: { answer: val } });
         if (r.reward) rw = r.reward;
-        if (r.practice) continue;
         next[x.id] = { ok: !!r.correct, val };
+        if (r.practice) continue;
         if (r.correct) setAns((a) => ({ ...a, [x.id]: { ...(a[x.id] || {}), exercise_id: x.id, is_correct: true } }));
       }
     } catch (x) { setErr(apiError(x)); }
@@ -427,33 +399,28 @@ function Runner({ hw, onBack, onChanged }) {
       <div className="hwtop"><Back onClick={onBack} />
         <button type="button" className="keychip click" onClick={() => setKeyDlg(true)} title={t('hwKeys')} aria-label={t('hwUseKeyTitle')}><Icon name="key" size={18} /> {keys}</button></div>
       <RewardBanner r={reward} />
-      {finished && <div className="dnote"><b>{t('hwFinished')}</b> · {t('hwResult')}: {Math.round((okCount / ex.length) * 100)}%</div>}
+      {finished && !practice && <div className="dnote"><b>{t('hwFinished')}</b> · {t('hwResult')}: {Math.round((okCount / ex.length) * 100)}% <button type="button" className="dbtn ghost" style={{ marginLeft: 10 }} onClick={() => { setPractice(true); setDraft({}); setRes({}); setSummary(null); setReward(null); setI(0); }}><Icon name="undo" size={15} /> {t('practiceAgain')}</button></div>}
+      {practice && <div className="dnote"><Icon name="info" size={15} /> {t('practiceNote')}</div>}
       {summary && !finished && <div className="dnote">{t('hwChecked')}: <b className="okmsg">{summary.ok} {t('hwCorrectN')}</b> · <b className="err">{summary.bad} {t('hwWrongN')}</b> — {t('hwEditRecheck')}</div>}
-      <div className="hwprogbar"><i style={{ width: Math.round((answered / Math.max(1, ex.length)) * 100) + '%' }} /></div>
       <div className="hwdots">{ex.map((x, k) => {
         const r = res[x.id] && draft[x.id] && res[x.id].val === draft[x.id].val ? res[x.id] : null;
-        return <button key={x.id} type="button" className={(k === i ? 'cur ' : '') + (isKeyed(x) ? 'key' : isClean(x) ? 'ok' : r && !r.ok ? 'bad' : has(x) ? 'filled' : '')} onClick={() => go(k)} aria-label={String(k + 1)}>{k + 1}</button>;
+        const st = practice ? (r ? (r.ok ? 'ok' : 'bad') : has(x) ? 'filled' : '') : (isKeyed(x) ? 'key' : isClean(x) ? 'ok' : r && !r.ok ? 'bad' : has(x) ? 'filled' : '');
+        return <button key={x.id} type="button" className={(k === i ? 'cur ' : '') + st} onClick={() => go(k)} aria-label={String(k + 1)}>{k + 1}</button>;
       })}</div>
       {e && (
         <div className="hwq">
           <p className="muted small">{i + 1} / {ex.length} · {t(KIND_LABEL[e.kind] || 'hwKindText')}</p>
           {e.kind !== 'gapfill' && <h3>{e.question}</h3>}
-          <AnswerInput e={e} val={d.val} setVal={setVal} disabled={isClean(e)} onEnter={() => i < ex.length - 1 && go(i + 1)} picked={d.picked} setPicked={setPicked} state={rs ? (rs.ok ? 'ok' : 'bad') : isClean(e) ? 'ok' : null} />
-          {isClean(e) && <p className="okmsg"><Icon name="ok" size={16} /> {t('hwCorrectMsg')}</p>}
-          {rs && rs.ok && !isClean(e) && <p className="okmsg"><Icon name="ok" size={16} /> {t('hwCorrectMsg')}</p>}
+          <AnswerInput e={e} val={d.val} setVal={setVal} disabled={isClean(e) && !practice} onEnter={() => i < ex.length - 1 && go(i + 1)} picked={d.picked} setPicked={setPicked} />
+          {isClean(e) && !practice && <p className="okmsg"><Icon name="ok" size={16} /> {t('hwCorrectMsg')}</p>}
+          {rs && rs.ok && (practice || !isClean(e)) && <p className="okmsg"><Icon name="ok" size={16} /> {t('hwCorrectMsg')}</p>}
           {rs && !rs.ok && <p className="err"><Icon name="alert" size={16} /> {t('hwWrongMsg')}</p>}
-          {isKeyed(e) && <p className="hwreveal"><Icon name="key" size={16} /> {t('hwAnswerIs')}: <b>{shown[e.id] || '—'}</b></p>}
+          {isKeyed(e) && !practice && <p className="hwreveal"><Icon name="key" size={16} /> {t('hwAnswerIs')}: <b>{shown[e.id] || '—'}</b></p>}
           {err && <div className="err">{err}</div>}
           <div className="acts">
             {i > 0 && <button className="dbtn ghost" onClick={() => go(i - 1)}><Icon name="prev" size={16} /></button>}
             {i < ex.length - 1 && <button className="dbtn ghost" onClick={() => go(i + 1)}>{t('hwNext')} <Icon name="chevR" size={16} /></button>}
           </div>
-        </div>
-      )}
-      {rs && (
-        <div className={'hwsheet ' + (rs.ok ? 'ok' : 'bad')}>
-          <b>{rs.ok ? t('hwCorrectMsg') : t('hwWrongMsg')}</b>
-          {i < ex.length - 1 && <button type="button" className="dbtn startbtn" onClick={() => go(i + 1)}>{t('hwContinue')}</button>}
         </div>
       )}
       <div className="hwcheckbar">
@@ -473,19 +440,20 @@ function Runner({ hw, onBack, onChanged }) {
   );
 }
 
-/* ---- Part 1: vocabulary: swipe cards -> Start -> type the English word into letter boxes ---- */
-function LetterBoxes({ target, value, onChange, onEnter, state }) {
-  const ref = useRef(null);
-  useEffect(() => { if (ref.current) ref.current.focus(); }, [target]);
-  const chars = [...target];
-  let k = 0;
-  return (
-    <div className={'lboxes ' + (state || '')} onClick={() => ref.current && ref.current.focus()}>
-      {chars.map((c, i) => (c === ' ' ? <span key={i} className="lgap" /> : <span key={i} className={'lbox' + (k === value.replace(/ /g, '').length ? ' cur' : '')}>{value.replace(/ /g, '')[k++] || ''}</span>))}
-      <input ref={ref} className="lhidden" value={value} maxLength={chars.length} autoCapitalize="none" autoComplete="off" spellCheck={false}
-        onChange={(e) => onChange(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && onEnter()} aria-label={t('hwTypeWord')} />
-    </div>
-  );
+/* ---- Part 1: vocabulary: swipe cards -> Start -> multiple choice "Pick the right meaning" ---- */
+const nrm = (v) => String(v || '').trim().toLowerCase();
+const shuf = (a) => { const x = [...a]; for (let i = x.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [x[i], x[j]] = [x[j], x[i]]; } return x; };
+// one right meaning + up to two wrong ones taken from the other words of the same unit (never a duplicate of the right one)
+function buildOptions(w, all) {
+  const right = trans(w);
+  const wrong = shuf([...new Set(all.filter((x) => x.id !== w.id).map(trans).filter((v) => v && nrm(v) !== nrm(right)))]).slice(0, 2);
+  return shuf([right, ...wrong]);
+}
+// the example sentence with the word highlighted (like "I'm the new hire!")
+function Highlight({ text, word }) {
+  const esc = String(word).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const parts = String(text).split(new RegExp('(' + esc + ')', 'i'));
+  return <>{parts.map((p, i) => (nrm(p) === nrm(word) ? <b key={i} className="mhl">{p}</b> : <span key={i}>{p}</span>))}</>;
 }
 
 function VocabFlow({ hw, onBack, onChanged }) {
@@ -497,7 +465,7 @@ function VocabFlow({ hw, onBack, onChanged }) {
   const [list, setList] = useState(words);
   const [testList, setTestList] = useState(words);
   const [cur, setCur] = useState(0);
-  const [val, setVal] = useState('');
+  const [pick, setPick] = useState(null);
   const [fb, setFb] = useState(null);
   const [busy, setBusy] = useState(false);
   const [reward, setReward] = useState(null);
@@ -505,19 +473,20 @@ function VocabFlow({ hw, onBack, onChanged }) {
   const touch = useRef(null);
   const step = (d) => { const n = idx + d; if (n < 0) return; if (n >= list.length) { setPhase('review'); return; } setIdx(n); };
   const save = async (w) => { try { const r = await api(`/api/homework/${hw.id}/words/${w.id}/save`, { method: 'POST' }); setList((l) => l.map((x) => (x.id === w.id ? { ...x, saved: r.saved } : x))); } catch {} };
-  const start = () => { const todo = words.filter((w) => !correct.has(w.id)); setTestList(todo.length ? todo : words); setCur(0); setVal(''); setFb(null); setPhase('test'); };
+  const start = () => { const todo = words.filter((w) => !correct.has(w.id)); setTestList(todo.length ? todo : words); setCur(0); setPick(null); setFb(null); setPhase('test'); };
   const w = testList[cur];
   const c = list[idx];
-  const check = async () => {
-    if (!val.trim() || busy || !w) return; setBusy(true); setErr('');
+  const opts = useMemo(() => (w ? buildOptions(w, words) : []), [w && w.id, phase]);
+  // tapping an answer checks it on the server at once (the server knows the right meaning; a repeat of a finished word pays nothing)
+  const choose = async (o) => {
+    if (busy || fb === 'ok' || !w) return; setBusy(true); setErr(''); setPick(o);
     try {
-      const r = await api(`/api/homework/${hw.id}/words/${w.id}/check`, { method: 'POST', body: { answer: val } });
-      if (r.correct) { setFb('ok'); setCorrect((s) => new Set([...s, w.id])); if (r.reward) setReward(r.reward); onChanged(); }
-      else { setFb('bad'); }
-    } catch (x) { setErr(apiError(x)); }
+      const r = await api(`/api/homework/${hw.id}/words/${w.id}/check`, { method: 'POST', body: { choice: o } });
+      if (r.correct) { setFb('ok'); setCorrect((x) => new Set([...x, w.id])); if (r.reward) setReward(r.reward); onChanged(); } else setFb('bad');
+    } catch (x) { setErr(apiError(x)); setPick(null); }
     setBusy(false);
   };
-  const next = () => { setVal(''); setFb(null); if (cur < testList.length - 1) setCur(cur + 1); else setPhase('done'); };
+  const next = () => { setPick(null); setFb(null); if (cur < testList.length - 1) setCur(cur + 1); else setPhase('done'); };
   return (
     <div className="dcard">
       <div className="hwtop"><Back onClick={onBack} /><h3 className="hwtitle">{t('hwPartVocab')}</h3></div>
@@ -553,16 +522,34 @@ function VocabFlow({ hw, onBack, onChanged }) {
         </div>
       )}
       {phase === 'test' && w && (
-        <div className="vtest">
-          <p className="muted small">{cur + 1} / {testList.length}</p>
-          {w.image_url ? <img className="vimg" src={media(w.image_url)} alt="" /> : <img className="vimg vart" src={artFor(w.word)} alt="" />}
-          <div className="vtr big">{trans(w)}</div>
-          <LetterBoxes target={w.word} value={val} onChange={(x) => { if (fb !== 'ok') { setVal(x); if (fb === 'bad') setFb(null); } }} onEnter={fb === 'ok' ? next : check} state={fb === 'ok' ? 'ok' : fb === 'bad' ? 'bad' : ''} />
-          {err && <div className="err">{err}</div>}
-          <RewardBanner r={reward} />
-          <div className="acts" style={{ justifyContent: 'center' }}>
-            {fb === 'ok' ? <button className="dbtn" onClick={next}>{t('hwNext')} <Icon name="chevR" size={16} /></button> : <button className="dbtn" disabled={busy || !val.trim()} onClick={check}>{t('hwCheck')}</button>}
+        <div className="mcq">
+          <div className="mcqtop">
+            <button type="button" className="mcqx" onClick={onBack} aria-label={t('close')}><Icon name="close" size={22} /></button>
+            <div className="mcqbar"><i style={{ width: Math.round(((cur + (fb === 'ok' ? 1 : 0)) / testList.length) * 100) + '%' }} /></div>
           </div>
+          <h3 className="mcqtitle">{t('pickMeaning')}</h3>
+          <div className="mcqcard">
+            <div className="mcqword"><b>{w.word}</b><button type="button" className="mcqspeak" onClick={() => speak(w.word)} aria-label={t('hwPronounce')}><Icon name="volume" size={18} /></button></div>
+            {(w.definition || w.example) && <hr />}
+            {w.definition && <p className="mcqdef">{w.definition}</p>}
+            {w.example && <p className="mcqex"><Highlight text={w.example} word={w.word} /></p>}
+          </div>
+          <p className="mcqq">{t('whatMeans')}</p>
+          <div className="mcqopts">
+            {opts.map((o, k) => {
+              const on = pick === o; const st = on ? (fb === 'ok' ? ' good' : fb === 'bad' ? ' wrong' : ' on') : '';
+              return <button key={o} type="button" className={'mcqopt' + st} disabled={busy || fb === 'ok'} onClick={() => choose(o)}>
+                <b>{LETTER(k)}.</b><span>{o}</span><i className="mcqradio">{on && fb === 'ok' && <Icon name="check" size={14} strokeWidth={3} />}{on && fb === 'bad' && <Icon name="close" size={14} strokeWidth={3} />}</i></button>;
+            })}
+          </div>
+          {err && <div className="err">{err}</div>}
+          {fb && (
+            <div className={'mcqsheet ' + fb}>
+              <div className="mcqverdict"><span className="mcqmark">{fb === 'ok' ? <Icon name="check" size={22} strokeWidth={3} /> : <Icon name="close" size={22} strokeWidth={3} />}</span><b>{fb === 'ok' ? t('correctExcl') : t('wrongTry')}</b></div>
+              <RewardBanner r={fb === 'ok' ? reward : null} />
+              {fb === 'ok' ? <button type="button" className="mcqcont" onClick={next}>{t('continueBtn')}</button> : <button type="button" className="mcqcont ghost" onClick={() => { setFb(null); setPick(null); }}>{t('retry')}</button>}
+            </div>
+          )}
         </div>
       )}
       {phase === 'done' && <><div className="dnote"><b>{t('hwTestDone')}</b></div><RewardBanner r={reward} /><div className="acts"><button className="dbtn ghost" onClick={() => { setIdx(0); setPhase('cards'); }}>{t('hwReview')}</button><button className="dbtn" onClick={onBack}>{t('hwFinish')}</button></div></>}
@@ -614,16 +601,6 @@ function Unit({ id, onBack, onListChanged }) {
   useEffect(() => { load(); }, [id]);
   if (err) return <div className="dcard"><Back onClick={onBack} /><p className="err">{err}</p></div>;
   if (!hw) return <div className="dcard"><Back onClick={onBack} /><p className="muted">{t('loading')}</p></div>;
-  if (hw.locked) {
-    const L = hw.lesson || {};
-    return (
-      <div className="dcard"><Back onClick={onBack} />
-        <h3 className="ico-inline"><Icon name="lock" size={20} /> {hw.unit ? `${t('unitWord')} ${hw.unit}` : hw.title}</h3>
-        <p>{t('hwLockedUnit')}</p>
-        {L.unlock_at && <p><b>{t('hwOpensAt')}: {new Date(L.unlock_at).toLocaleString(locale(), { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}</b></p>}
-      </div>
-    );
-  }
   const leave = () => { setSub(''); load(); onListChanged(); };
   if (sub === 'run') return <Runner hw={hw} onBack={leave} onChanged={onListChanged} />;
   if (sub === 'vocab') return <VocabFlow hw={hw} onBack={leave} onChanged={onListChanged} />;
@@ -657,63 +634,90 @@ function Unit({ id, onBack, onListChanged }) {
   );
 }
 
-const keyOf = (s) => { const m = String(s || '').match(/^(\d+)(?:\.(\d+))?/); return m ? [Number(m[1]), Number(m[2] || 0)] : [9999, 0]; };
 const GRADS = ['linear-gradient(160deg,#4aa3e0,#1d5fa8)', 'linear-gradient(160deg,#9b6bd6,#3d3a9e)', 'linear-gradient(160deg,#35b58a,#1d6f6b)', 'linear-gradient(160deg,#e08a4a,#a8431d)'];
-const LOCK_BG = 'linear-gradient(160deg,#4a5068,#2a2f42)';
 const starsFor = (p) => (p >= 80 ? 3 : p >= 50 ? 2 : p > 0 ? 1 : 0);
-const SLOTS = (() => { const a = []; for (let u = 1; u <= 12; u++) for (let j = 1; j <= 3; j++) a.push(`${u}.${j}`); return a; })();
-// the offline lesson window (same rule as the server): locked until 1 minute before the lesson ends
-const lessonOf = (h, now) => {
-  if (!h || !h.lesson_start || !h.lesson_end) return { state: 'open' };
-  const s = Date.parse(h.lesson_start), e = Date.parse(h.lesson_end), u = e - 60000;
-  return { state: now < s ? 'upcoming' : now < u ? 'live' : 'open', start: s, end: e, unlock: u };
-};
-const fmtCd = (ms) => {
-  if (ms <= 0) return '0:00';
-  const s = Math.floor(ms / 1000), d = Math.floor(s / 86400), hh = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
-  if (d > 0) return `${d}d ${hh}h`;
-  if (hh > 0) return `${hh}h ${String(m).padStart(2, '0')}m`;
-  return `${m}:${String(sec).padStart(2, '0')}`;
-};
-const fmtWhen = (ms) => new Date(ms).toLocaleString(locale(), { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+
+/* What the student sees of one unit right now:
+   open   - can be done (and repeated any time, the % never goes down and no coins are paid twice)
+   live   - THIS unit's offline lesson is running: red bar that drains until the lock ends
+   locked - its lesson has not happened yet, or another offline lesson is running: lock + countdown
+   empty  - the teacher has not published this lesson yet            exam - final exam (closed) */
+function unitState(it, nowMs) {
+  if (it.kind === 'exam') return { state: 'exam' };
+  if (it.kind === 'empty') return { state: 'empty' };
+  const h = it.h;
+  if (h.locked && (!h.opens_at || Date.parse(h.opens_at) > nowMs)) {
+    const remaining = h.opens_at ? Date.parse(h.opens_at) - nowMs : 0;
+    return h.lock_reason === 'lesson_now' ? { state: 'live', reason: h.lock_reason, remaining, left: lessonLeft(h, nowMs) } : { state: 'locked', reason: h.lock_reason, remaining };
+  }
+  return { state: 'open', pct: h.pct ?? 0 };
+}
+
+function LockInfo({ it, nowMs, onClose }) {
+  const s = unitState(it, nowMs);
+  const h = it.h;
+  const title = it.kind === 'exam' ? t('finalExam') : `${t('unitWord')} ${it.label}`;
+  return (
+    <Modal title={<span className="ico-inline"><Icon name="lock" size={18} /> {title}</span>} onClose={onClose}>
+      {s.state === 'exam' && <p>{t('examLockedNote')}</p>}
+      {s.state === 'empty' && <><p><b>{t('notPublished')}</b></p><p className="muted">{t('notPublishedNote')}</p></>}
+      {(s.state === 'locked' || s.state === 'live') && (
+        <>
+          <p className="lockwhen"><span className="muted small">{t('opensOn')}</span><b>{fmtWhen(h.opens_at)}</b></p>
+          <p className="lockwhen"><span className="muted small">{t('opensIn')}</span><b className="lockcount">{fmtCountdown(s.remaining)}</b></p>
+          <p className="muted">{s.reason === 'lesson' ? t('lockedInLesson') : t('opensAfterLesson')}</p>
+        </>
+      )}
+      {s.state === 'open' && <p>{t('hwUnit')}: {it.label}</p>}
+      <span className="acts"><button className="dbtn" onClick={onClose}>{t('close')}</button></span>
+    </Modal>
+  );
+}
 
 export function StudentHomework({ me, onDeep }) {
   const [list, setList] = useState(null);
+  const [st, setSt] = useState(null);
+  const [serverNow, setServerNow] = useState(null);
   const [err, setErr] = useState('');
   const [open, setOpen] = useState(null);
   const [saved, setSaved] = useState(false);
   const [noGroup, setNoGroup] = useState(false);
-  const [sel, setSel] = useState(0);
-  const [infoKey, setInfoKey] = useState(null);
-  const [now, setNow] = useState(Date.now());
-  const offRef = useRef(0);
+  const [sel, setSel] = useState(null);
+  const [info, setInfo] = useState(null);
   const rail = useRef(null);
-  const load = () => api('/api/homework').then((r) => { if (r[0] && r[0].server_now) offRef.current = Date.parse(r[0].server_now) - Date.now(); setNow(Date.now() + offRef.current); setList(r); }).catch((x) => setErr(apiError(x)));
-  useEffect(() => { load(); api('/api/community/groups').then((g) => setNoGroup(g.length === 0)).catch(() => {}); }, []);
-  useEffect(() => { const id = setInterval(() => setNow(Date.now() + offRef.current), 1000); return () => clearInterval(id); }, []);
+  const lastReload = useRef(0);
+  const clock = useClock(serverNow);
+  const nowMs = clock();
+  const load = () => Promise.all([api('/api/homework'), api('/api/homework/lock-status')])
+    .then(([l, s]) => { setList(l); setSt(s); setServerNow(s.server_now); setErr(''); lastReload.current = Date.now(); })
+    .catch((x) => setErr(apiError(x)));
+  useEffect(() => { load(); api('/api/community/groups').then((g) => setNoGroup(g.length === 0)).catch(() => {}); const id = setInterval(load, 60000); return () => clearInterval(id); }, []);
   useEffect(() => { onDeep && onDeep(open !== null); }, [open]);
 
-  const real = list || [];
-  const byUnit = {};
-  real.forEach((h) => { const k = String(h.unit || '').trim(); if (k && !byUnit[k]) byUnit[k] = h; });
-  const std = new Set(SLOTS);
-  const base = SLOTS.map((k) => ({ key: k, h: byUnit[k] || null }));
-  const extra = real.filter((h) => !std.has(String(h.unit || '').trim())).map((h) => ({ key: String(h.unit || '').trim() || h.title, h }));
-  const all = [...base, ...extra].sort((a, b) => { const x = keyOf(a.key), y = keyOf(b.key); return x[0] - y[0] || x[1] - y[1] || String(a.key).localeCompare(String(b.key)); });
-  const items = [...all, { key: 'final', exam: 'final' }, { key: 'mock', exam: 'mock' }].map((it) => {
-    if (it.exam) return { ...it, st: 'exam' };
-    if (!it.h) return { ...it, st: 'empty' };
-    const L = lessonOf(it.h, now);
-    return { ...it, st: L.state, L, pct: it.h.pct ?? 0 };
-  });
-  const isLocked = (it) => it.st !== 'open';
-  const idxFirstOpen = items.findIndex((x) => x.st === 'open' && x.pct < 100);
-  const idxLastOpen = items.map((x) => x.st === 'open').lastIndexOf(true);
+  const course = useMemo(() => buildCourse(list), [list]);
+  const flat = useMemo(() => course.flatMap((g) => g.items), [course]);
+  // the moment a lock runs out (or a lesson starts) the list is fetched again, so the card opens without a manual refresh
+  const sec = Math.floor(nowMs / 1000);
+  useEffect(() => {
+    if (!list || !st || Date.now() - lastReload.current < 2500) return;
+    const expired = list.some((h) => h.locked && h.opens_at && Date.parse(h.opens_at) <= nowMs) || (st.in_lesson && Date.parse(st.opens_at) <= nowMs)
+      || (!st.in_lesson && st.next_lesson_start && Date.parse(st.next_lesson_start) <= nowMs);
+    if (expired) load();
+  }, [sec]);
+
+  // start on the first unit that can be done and is not finished yet
+  useEffect(() => {
+    if (!list || sel !== null) return;
+    const states = flat.map((it) => unitState(it, nowMs));
+    let k = states.findIndex((x) => x.state === 'open' && x.pct < 100);
+    if (k < 0) { const opens = states.map((x, i) => (x.state === 'open' ? i : -1)).filter((i) => i >= 0); k = opens.length ? opens[opens.length - 1] : 0; }
+    setSel(k);
+  }, [list]);
+  useEffect(() => { if (sel !== null) centre(sel, false); }, [sel === null, !!list]);
   function centre(i, smooth = true) {
     const el = rail.current; const c = el && el.children[i]; if (!c) return;
     el.scrollTo({ left: c.offsetLeft - (el.clientWidth - c.offsetWidth) / 2, behavior: smooth ? 'smooth' : 'auto' });
   }
-  useEffect(() => { if (!list) return; const k = idxFirstOpen >= 0 ? idxFirstOpen : Math.max(0, idxLastOpen); setSel(k); setTimeout(() => centre(k, false), 60); }, [list && list.length]);
   const onScroll = () => {
     const el = rail.current; if (!el || !el.children.length) return;
     const mid = el.scrollLeft + el.clientWidth / 2; let best = 0, d = 1e9;
@@ -722,18 +726,33 @@ export function StudentHomework({ me, onDeep }) {
   };
   if (open) return <Unit id={open} onBack={() => { setOpen(null); load(); }} onListChanged={load} />;
 
-  const groups = [];
-  items.forEach((it, i) => { if (it.exam) return; const k = keyOf(it.key)[0]; const g = groups[groups.length - 1]; if (g && g.k === k) g.items.push({ it, i }); else groups.push({ k, items: [{ it, i }] }); });
-  const exams = items.map((it, i) => ({ it, i })).filter((x) => x.it.exam);
-  const level = real.length ? Math.round(real.reduce((s, h) => s + (h.pct ?? 0), 0) / real.length) : 0;
-  const onCard = (it, i) => { if (i !== sel) { setSel(i); centre(i); return; } if (it.st === 'open') setOpen(it.h.id); else setInfoKey(it.key); };
-  const info = infoKey ? items.find((x) => x.key === infoKey) : null;
-  const examName = (it) => (it.exam === 'final' ? t('hwFinalExam') : t('hwMockExam'));
-
+  const pcts = flat.filter((it) => it.kind === 'hw').map((it) => ({ it, s: unitState(it, nowMs) })).filter((x) => x.s.state === 'open');
+  const level = pcts.length ? Math.round(pcts.reduce((a, x) => a + x.s.pct, 0) / pcts.length) : 0;
+  const clickCard = (it) => {
+    if (it.i !== sel) { setSel(it.i); centre(it.i); return; }
+    const s = unitState(it, nowMs);
+    if (s.state === 'open') setOpen(it.h.id); else setInfo(it);
+  };
+  const anyContent = list && list.some((h) => h.exercise_count > 0 || h.word_count > 0 || h.has_video);
   return (
     <div className="lessons">
       <div className="hwtop"><h2 className="hwtitle">{t('lessons')}</h2>
         <button type="button" className="gbtn" onClick={() => setSaved(true)} aria-label={t('hwSaved')}><Icon name="bookmark" size={20} /></button></div>
+      {st && st.in_lesson && (
+        <div className="lbanner live" role="status">
+          <Icon name="lock" size={22} />
+          <div><b>{t('lessonRunning')}</b><small>{t('lessonRunningNote')}</small></div>
+          <span className="lbcount"><small>{t('opensIn')}</small><b>{fmtCountdown(Date.parse(st.opens_at) - nowMs)}</b></span>
+        </div>
+      )}
+      {st && !st.in_lesson && st.next_lesson_start && (
+        <div className="lbanner" role="status">
+          <Icon name="clock" size={20} />
+          <div><b>{t('nextLessonIn')}</b><small>{fmtWhen(st.next_lesson_start)}</small></div>
+          <span className="lbcount"><b>{fmtCountdown(Date.parse(st.next_lesson_start) - nowMs)}</b></span>
+        </div>
+      )}
+      {st && !st.has_schedule && <p className="muted small">{t('noScheduleNote')}</p>}
       <div className="lprofile">
         <span className="lpill"><Icon name="star" size={18} fill="currentColor" /> {me ? me.points : 0}</span>
         <span className="lavatar">{me && me.avatar_url ? <img src={API + me.avatar_url} alt="" /> : <b>{me ? (me.full_name || '?')[0] : '?'}</b>}</span>
@@ -743,54 +762,51 @@ export function StudentHomework({ me, onDeep }) {
       {err && <div className="err">{err}</div>}
       {!list && !err && <p className="muted">{t('loading')}</p>}
       {list && noGroup && <p className="muted">{t('notInGroup')}</p>}
+      {list && !noGroup && !anyContent && <p className="muted">{t('noHomework')}</p>}
       {list && !noGroup && (
         <>
           <div className="lunits">
-            {groups.map((g) => (
-              <div key={g.k} className="lunit">
-                <span className={'lunitname' + (g.items.some((x) => x.i === sel) ? ' on' : '')}>{g.k === 9999 ? t('homework') : `${t('unitWord')} ${g.k}`}</span>
-                <div className="lchips">{g.items.map(({ it, i }) => (
-                  <button key={it.key} type="button" className={'lchip' + (it.st === 'open' && it.pct >= 100 ? ' done' : '') + (isLocked(it) ? ' lock' : '') + (i === sel ? ' sel' : '')} onClick={() => { setSel(i); centre(i); }}>{it.key}</button>
-                ))}</div>
-              </div>
+            {course.map((g) => (
+              g.k === 'final'
+                ? <div key="final" className="lunit"><button type="button" className={'lfinal' + (g.items[0].i === sel ? ' sel' : '')} onClick={() => { setSel(g.items[0].i); centre(g.items[0].i); }}><Icon name="lock" size={14} /> {t('finalExam')}</button></div>
+                : (
+                  <div key={g.k} className="lunit">
+                    <span className={'lunitname' + (g.items.some((x) => x.i === sel) ? ' on' : '')}>{g.k === 0 ? t('homework') : `${t('unitWord')} ${g.k}`}</span>
+                    <div className="lchips">{g.items.map((it) => {
+                      const s = unitState(it, nowMs);
+                      return <button key={it.key} type="button" className={'lchip' + (s.state === 'open' ? (s.pct >= 100 ? ' done' : '') : ' lk') + (it.i === sel ? ' sel' : '')} onClick={() => { setSel(it.i); centre(it.i); }}>{s.state === 'open' ? it.label : <><span>{it.label}</span><Icon name="lock" size={11} /></>}</button>;
+                    })}</div>
+                  </div>
+                )
             ))}
-            <div className="lunit exams">{exams.map(({ it, i }) => <button key={it.key} type="button" className={'lunitname exam' + (i === sel ? ' sel' : '')} onClick={() => { setSel(i); centre(i); }}><Icon name="lock" size={13} /> {examName(it)}</button>)}</div>
           </div>
           <div className="lrail" ref={rail} onScroll={onScroll}>
-            {items.map((it, i) => {
-              const locked = isLocked(it);
-              const L = it.L;
-              const remain = it.st === 'live' ? Math.max(0, Math.min(100, ((L.unlock - now) / Math.max(1, L.unlock - L.start)) * 100)) : 0;
+            {flat.map((it) => {
+              const s = unitState(it, nowMs); const h = it.h;
+              const grad = it.kind === 'exam' ? undefined : GRADS[(parseInt(it.label, 10) - 1 + 4) % 4 || 0];
+              const stars = s.state === 'open' ? starsFor(s.pct) : 0;
               return (
-                <button key={it.key} type="button" className={'lcard' + (i === sel ? ' cur' : '') + (locked ? ' locked' : '')} style={{ background: locked ? LOCK_BG : GRADS[i % GRADS.length] }} onClick={() => onCard(it, i)}>
-                  <b className="lnum">{it.exam ? examName(it) : it.key}</b>
-                  <span className="lname">{it.exam ? t('hwExamSub') : it.h ? it.h.title : t('hwNotScheduled')}</span>
-                  <small className="ldate">{it.h ? (it.st === 'open' ? longDay(it.h.due_date) : L && L.start ? fmtWhen(L.start) : longDay(it.h.due_date)) : ''}</small>
-                  <span className="lstars">{[0, 1, 2].map((k) => <Icon key={k} name="star" size={k === 1 ? 64 : 46} strokeWidth={1.4} fill={!locked && k < starsFor(it.pct) ? '#ffcc00' : 'rgba(255,255,255,.25)'} className={'lstar s' + k} />)}</span>
-                  {it.st === 'open' && <span className="lpct"><i style={{ width: it.pct + '%' }} /><em>{it.pct}%</em></span>}
-                  {it.st === 'live' && <><span className="lpct live"><i className="red" style={{ width: remain + '%' }} /><em><Icon name="lock" size={22} /></em></span><small className="lcd">{fmtCd(L.unlock - now)}</small></>}
-                  {it.st === 'upcoming' && <><span className="lpct lockedpill"><em><Icon name="lock" size={22} /></em></span><small className="lcd">{t('hwOpensIn')} {fmtCd(L.unlock - now)}</small></>}
-                  {(it.st === 'empty' || it.st === 'exam') && <><span className="lpct lockedpill"><em><Icon name="lock" size={22} /></em></span><small className="lcd">{t('hwSoon')}</small></>}
+                <button key={it.key} type="button" className={'lcard' + (it.i === sel ? ' cur' : '') + (s.state !== 'open' ? ' lockd' : '') + (it.kind === 'exam' ? ' exam' : '')} style={grad ? { background: grad } : undefined} onClick={() => clickCard(it)}>
+                  <b className="lnum">{it.kind === 'exam' ? <Icon name="trophy" size={46} /> : it.label}</b>
+                  <span className="lname">{it.kind === 'exam' ? t('finalExam') : h ? h.title : t('notPublished')}</span>
+                  <small className="ldate">{it.kind === 'exam' ? t('examMainSpeaking') : h ? longDay(h.due_date) : ' '}</small>
+                  <span className="lstars">{[0, 1, 2].map((k) => <Icon key={k} name="star" size={k === 1 ? 64 : 46} strokeWidth={1.4} fill={k < stars ? '#ffcc00' : 'rgba(255,255,255,.25)'} className={'lstar s' + k} />)}</span>
+                  {s.state === 'open'
+                    ? <span className="lpct"><i style={{ width: s.pct + '%' }} /><em>{s.pct}%</em></span>
+                    : (
+                      <span className="lpctwrap">
+                        <span className={'lpct lockd' + (s.state === 'live' ? ' live' : '')}>{s.state === 'live' && <i className="red" style={{ width: Math.round(s.left * 100) + '%' }} />}<em><Icon name="lock" size={22} /></em></span>
+                        <small className="lcount">{s.state === 'locked' || s.state === 'live' ? fmtCountdown(s.remaining) : t('comingSoon')}</small>
+                      </span>
+                    )}
                 </button>
               );
             })}
           </div>
         </>
       )}
+      {info && <LockInfo it={info} nowMs={nowMs} onClose={() => setInfo(null)} />}
       {saved && <SavedWords onClose={() => setSaved(false)} />}
-      {info && (
-        <Modal title={<span className="ico-inline"><Icon name="lock" size={18} /> {info.exam ? examName(info) : `${t('unitWord')} ${info.key}`}</span>} onClose={() => setInfoKey(null)}>
-          {info.exam ? <p>{t('hwExamLocked')}</p> : !info.h ? <p>{t('hwNotScheduled')}</p> : (
-            <>
-              <p>{t('hwLockedUnit')}</p>
-              <p><b>{t('hwOpensAt')}: {fmtWhen(info.L.unlock)}</b></p>
-              <p className="muted small">{t('hwLessonTime')}: {fmtWhen(info.L.start)} – {fmtWhen(info.L.end)}</p>
-              <p className="muted small">{t('hwOpensIn')} {fmtCd(info.L.unlock - now)}</p>
-            </>
-          )}
-          <span className="acts"><button className="dbtn ghost" onClick={() => setInfoKey(null)}>{t('close')}</button></span>
-        </Modal>
-      )}
     </div>
   );
 }

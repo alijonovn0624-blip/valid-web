@@ -3,11 +3,11 @@ import { api, API } from './api';
 import Chat from './Chat.jsx';
 import Settings from './Settings.jsx';
 import { Ranking } from './Ranking.jsx';
-import { StudentHomework, StudentRewards, SavedWords } from './Homework.jsx';
+import { StudentHomework, StudentRewards } from './Homework.jsx';
 import Dashboard from './Dashboard.jsx';
-import { t, setLang, LANGS, apiError, locale } from './i18n.js';
+import { t, setLang, LANGS, apiError } from './i18n.js';
 import { Icon, AppIcon, Status } from './icons.jsx';
-import { useCountdown, CountdownText, Stat, Ava } from './ui.jsx';
+import { useCountdown, CountdownText, Stat } from './ui.jsx';
 
 const fmt = (d) => new Date(d).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' });
 
@@ -209,99 +209,6 @@ function EventRow({ events, user, reload }) {
 }
 
 /* ---------- Home ---------- */
-/* Student dashboard (computer): progress, events, ranking, stories, vocabulary and achievements — all from real data */
-function HomeDesktop({ user, nav, onHomework }) {
-  const [hw, setHw] = useState(null);
-  const [events, setEvents] = useState(null);
-  const [rank, setRank] = useState({});
-  const [board, setBoard] = useState(null);
-  const [stories, setStories] = useState([]);
-  const [saved, setSaved] = useState(null);
-  const [savedOpen, setSavedOpen] = useState(false);
-  const [openStory, setOpenStory] = useState(null);
-  useEffect(() => {
-    api('/api/homework').then(setHw).catch(() => setHw([]));
-    api('/api/events').then(setEvents).catch(() => setEvents([]));
-    api('/api/points/ranking').then(setRank).catch(() => {});
-    api('/api/points/leaderboard?scope=group').then(setBoard).catch(() => setBoard([]));
-    api('/api/stories').then(setStories).catch(() => {});
-    api('/api/homework/saved/words').then((w) => setSaved(w.length)).catch(() => setSaved(0));
-  }, []);
-  const list = (hw || []).filter((h) => h.exercise_count > 0 || h.word_count > 0 || h.has_video);
-  const openTasks = list.filter((h) => (!h.lesson || h.lesson.state === 'open') && (h.pct ?? 0) < 100).length;
-  const overall = list.length ? Math.round(list.reduce((s, h) => s + (h.pct ?? 0), 0) / list.length) : 0;
-  const part = (key, has) => { const l = list.filter(has); return { n: l.length, done: l.filter((h) => (h.my_parts || []).includes(key)).length }; };
-  const parts = [[t('hwVocab'), part('vocab', (h) => h.word_count > 0)], [t('hwVideoLesson'), part('video', (h) => h.has_video)], [t('hwExercises'), part('exercises', (h) => h.exercise_count > 0)]];
-  const st = (p) => (p.n === 0 ? ['–', 'idle'] : p.done === p.n ? [t('hwCompleted'), 'ok'] : p.done > 0 ? [`${t('inProgress')} · ${p.done} / ${p.n}`, 'run'] : [t('notStarted'), 'idle']);
-  const upcoming = (events || []).filter((e) => new Date(e.starts_at) >= new Date(Date.now() - 3600000)).sort((a, b) => new Date(a.starts_at) - new Date(b.starts_at)).slice(0, 2);
-  const top = (board || []).slice(0, 3);
-  const exDone = list.reduce((s, h) => s + (h.my_correct || 0), 0);
-  const badges = [
-    ['trophy', t('achFirst'), rank.group_rank === 1],
-    ['flame', t('achStreak'), (user.streak_days || 0) >= 7],
-    ['homework', t('achExercises'), exDone >= 100],
-    ['star', t('achPerfect'), list.some((h) => (h.pct ?? 0) >= 100)],
-  ];
-  const fmtDay = (d) => new Date(d).toLocaleDateString(locale(), { month: 'short', day: 'numeric' });
-  const fmtHm = (d) => new Date(d).toLocaleTimeString(locale(), { hour: '2-digit', minute: '2-digit' });
-  return (
-    <div className="sh">
-      <div className="sh-stats">
-        <button type="button" className="shcard" onClick={() => nav && nav('points')}><AppIcon name="points" size={44} /><span><small>{t('points')}</small><b>{user.points}</b></span></button>
-        <button type="button" className="shcard" onClick={() => nav && nav('coins')}><span className="sh-coin"><Icon name="coins" size={26} /></span><span><small>{t('coins')}</small><b>{user.coins}</b></span></button>
-        <button type="button" className="shcard" onClick={() => nav && nav('ranking')}><AppIcon name="ranking" size={44} /><span><small>{t('ranking')}</small><b>#{rank.group_rank ?? '-'} <em>{t('inGroup')}</em></b></span>{rank.group_rank === 1 && <Icon name="crown" size={30} className="sh-crown" />}</button>
-        <button type="button" className="shcard" onClick={onHomework}><AppIcon name="homework" size={44} /><span><small>{t('myHomework')}</small><b>{openTasks} <em>{t('hwTasks')}</em></b></span><Icon name="chevR" size={20} className="sh-go" /></button>
-      </div>
-      <div className="sh-row3">
-        <section className="shpanel">
-          <div className="shph"><b><Icon name="flame" size={18} /> {t('yourProgress')}</b><span className="shbig">{overall}%</span></div>
-          <div className="shbar"><i style={{ width: overall + '%' }} /></div>
-          <div className="shparts">{parts.map(([name, p]) => { const [txt, cls] = st(p); return <div key={name} className="shpart"><span className={'shdot ' + cls}>{cls === 'ok' && <Icon name="check" size={12} />}</span><span>{name}</span><em className={cls}>{txt}</em></div>; })}</div>
-        </section>
-        <section className="shpanel">
-          <div className="shph"><b><Icon name="calendar" size={18} /> {t('upcomingEvents')}</b><a onClick={() => nav && nav('events')}>{t('seeAll')} <Icon name="next" size={14} /></a></div>
-          {events && upcoming.length === 0 && <p className="muted">{t('noUpcoming')}</p>}
-          {upcoming.map((e) => (
-            <div key={e.id} className="shev"><span className="shdate"><small>{new Date(e.starts_at).toLocaleDateString(locale(), { month: 'short' }).toUpperCase()}</small><b>{new Date(e.starts_at).getDate()}</b></span>
-              <span className="shevt"><b>{e.title}</b><small><Icon name="clock" size={13} /> {fmtHm(e.starts_at)}</small>{e.location && <small><Icon name="pin" size={13} /> {e.location}</small>}</span>
-              <button type="button" className="shgo" onClick={() => nav && nav('events')} aria-label={t('seeAll')}><Icon name="next" size={16} /></button></div>
-          ))}
-        </section>
-        <section className="shpanel">
-          <div className="shph"><b><Icon name="trophy" size={18} /> {t('ranking')}</b><a onClick={() => nav && nav('ranking')}>{t('seeAll')} <Icon name="next" size={14} /></a></div>
-          {board && top.length === 0 && <p className="muted">{t('noApproved')}</p>}
-          {top.map((u, k) => (
-            <div key={u.id} className={'shrk' + (u.id === user.id ? ' me' : '')}><span className={'shmedal m' + (k + 1)}>{k + 1}</span><Ava u={u} size={32} /><b>{u.full_name}</b><em>{u.points} {t('pts')}</em></div>
-          ))}
-          {rank.group_rank && <div className="shyou"><Icon name="crown" size={18} /> {t('youAre')} #{rank.group_rank}</div>}
-        </section>
-      </div>
-      <div className="sh-row3">
-        <section className="shpanel">
-          <div className="shph"><b><Icon name="stories" size={18} /> {t('stories')}</b></div>
-          {stories.length === 0 && <p className="muted">{t('noStory')}</p>}
-          <div className="shstories">{stories.slice(0, 4).map((s, i) => (
-            <button type="button" key={s.id} className="shst" onClick={() => setOpenStory(i)}>
-              {s.media_type === 'image' ? <img src={API + s.media_url} alt="" /> : <span className="vid"><Icon name="play" size={24} /></span>}
-              <span>{s.title || s.category}</span></button>
-          ))}</div>
-        </section>
-        <section className="shpanel">
-          <div className="shph"><b><Icon name="bookmark" size={18} /> {t('vocabLists')}</b></div>
-          <div className="shvocab"><span><small>{t('myVocabulary')}</small><b>{saved === null ? '–' : saved} <em>{t('hwWords')}</em></b></span>
-            <button type="button" className="dbtn startbtn" onClick={() => setSavedOpen(true)}>{t('view')} <Icon name="next" size={14} /></button></div>
-        </section>
-        <section className="shpanel">
-          <div className="shph"><b><Icon name="medal" size={18} /> {t('achievements')}</b></div>
-          <div className="shbadges">{badges.map(([ic, name, got]) => <span key={name} className={'shbadge' + (got ? ' got' : '')}><i><Icon name={ic} size={26} /></i><small>{name}</small></span>)}</div>
-        </section>
-      </div>
-      {savedOpen && <SavedWords onClose={() => setSavedOpen(false)} />}
-      {openStory !== null && <StoryViewer stories={stories} start={openStory} isAdmin={false} onDeleted={(id) => setStories((x) => x.filter((y) => y.id !== id))} onClose={() => setOpenStory(null)} />}
-    </div>
-  );
-}
-
 function Home({ user, desktop, nav, onHomework, onGo }) {
   const [stories, setStories] = useState([]);
   const [events, setEvents] = useState([]);
@@ -312,10 +219,22 @@ function Home({ user, desktop, nav, onHomework, onGo }) {
   useEffect(() => {
     if (!desktop) { api('/api/stories').then(setStories).catch(() => {}); loadEvents(); }
     api('/api/points/ranking').then(setRank).catch(() => {});
-    api('/api/homework').then((l) => { const x = l.find((y) => y.exercise_count > 0 && (!y.lesson || y.lesson.state === 'open')); setHw(x ? { ...x, pct: Math.round((x.my_correct / x.exercise_count) * 100) } : false); }).catch(() => setHw(false));
+    api('/api/homework').then((l) => { const x = l.find((y) => y.exercise_count > 0); setHw(x ? { ...x, pct: Math.round((x.my_correct / x.exercise_count) * 100) } : false); }).catch(() => setHw(false));
   }, []);
   const hwLabel = hw ? (hw.unit ? `${t('unitWord')} ${hw.unit}` : hw.title) : t('noHomework');
-  if (desktop) return <HomeDesktop user={user} nav={nav} onHomework={onHomework} />;
+  if (desktop) {
+    return (
+      <>
+        <div className="dstats">
+          <Stat icon={<AppIcon name="points" size={30} />} tint="#8b5cf633" label={t('points')} value={user.points} onClick={nav ? () => nav('points') : undefined} />
+          <Stat icon={<Icon name="coins" size={20} />} tint="#f5a62333" label={t('coins')} value={user.coins} onClick={nav ? () => nav('coins') : undefined} />
+          <Stat icon={<AppIcon name="ranking" size={30} />} tint="#3b5bdb33" label={t('ranking')} value={'#' + (rank.group_rank ?? '-')} sub={t('inGroup')} onClick={nav ? () => nav('ranking') : undefined} />
+          <Stat icon={<AppIcon name="homework" size={30} />} tint="#22b57333" label={t('myHomework')} value={hw ? hw.pct + '%' : '–'} sub={hwLabel} onClick={onHomework} />
+        </div>
+        <Feed user={user} nav={nav} />
+      </>
+    );
+  }
   return (
     <div className="shome">
       <div className="shead">
@@ -620,7 +539,7 @@ export default function App() {
   if ((staff && view === 'dash') || (!staff && desktop))
     return (
       <>
-        <Dashboard user={user} StoryForm={StoryForm} EventForm={EventForm} Feed={Feed} StudentHome={Home} StudentRanking={Ranking} onHwDeep={setHwDeep} hwDeep={hwDeep} unread={unread} onChat={() => setChatOpen(true)}
+        <Dashboard user={user} StoryForm={StoryForm} EventForm={EventForm} Feed={Feed} StudentHome={Home} StoryViewer={StoryViewer} StudentRanking={Ranking} onHwDeep={setHwDeep} hwDeep={hwDeep} unread={unread} onChat={() => setChatOpen(true)}
           reload={loadMe} theme={theme} setTheme={setTheme} lang={lang} changeLang={changeLang} />
         {chatOpen && <Chat me={user} onClose={() => setChatOpen(false)} />}
       </>

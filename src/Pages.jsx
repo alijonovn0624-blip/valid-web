@@ -441,6 +441,33 @@ function TeacherSelect({ teachers, value, onChange, required }) {
   );
 }
 
+/* ---------- Offline lesson schedule of a group (weekday + start/end). Units lock and unlock from this. ---------- */
+const DAY_ORDER = [1, 2, 3, 4, 5, 6, 0]; // Monday first; 0 = Sunday
+const dayName = (wd) => new Date(Date.UTC(2024, 0, 7 + wd)).toLocaleDateString(locale(), { weekday: 'short', timeZone: 'UTC' }); // 2024-01-07 was a Sunday
+const scheduleText = (slots) => (!slots || slots.length === 0 ? t('noSchedule') : [...slots].sort((a, b) => DAY_ORDER.indexOf(a.weekday) - DAY_ORDER.indexOf(b.weekday)).map((s) => `${dayName(s.weekday)} ${s.start}–${s.end}`).join(' · '));
+function ScheduleEditor({ value, onChange }) {
+  const by = new Map((value || []).map((s) => [s.weekday, s]));
+  const toggle = (wd) => onChange(by.has(wd) ? value.filter((s) => s.weekday !== wd) : [...value, { weekday: wd, start: '18:00', end: '20:00' }]);
+  const set = (wd, patch) => onChange(value.map((s) => (s.weekday === wd ? { ...s, ...patch } : s)));
+  return (
+    <div className="sched">
+      <h4><Icon name="clock" size={15} /> {t('lessonSchedule')}</h4>
+      <small className="muted">{t('lessonScheduleNote')}</small>
+      {DAY_ORDER.map((wd) => {
+        const s = by.get(wd);
+        return (
+          <div key={wd} className={'schedrow' + (s ? '' : ' off')}>
+            <label className="chk"><input type="checkbox" checked={!!s} onChange={() => toggle(wd)} /> {dayName(wd)}</label>
+            <input type="time" value={s ? s.start : ''} disabled={!s} aria-label={t('lessonFrom')} onChange={(e) => set(wd, { start: e.target.value })} required={!!s} />
+            <input type="time" value={s ? s.end : ''} disabled={!s} aria-label={t('lessonTo')} onChange={(e) => set(wd, { end: e.target.value })} required={!!s} />
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+const badSchedule = (slots) => (slots || []).some((s) => !s.start || !s.end || s.end <= s.start);
+
 /* ---------- Groups: create / edit / archive / delete ---------- */
 export function GroupsPage({ isAdmin, reloadGroups }) {
   const [tab, setTab] = useState('active');
@@ -451,6 +478,7 @@ export function GroupsPage({ isAdmin, reloadGroups }) {
   const [maxN, setMaxN] = useState('');
   const [startD, setStartD] = useState('');
   const [endD, setEndD] = useState('');
+  const [sched, setSched] = useState([]);
   const [fTeacher, setFTeacher] = useState('');
   const [msg, setMsg] = useState('');
   const [open, setOpen] = useState(null);
@@ -474,8 +502,12 @@ export function GroupsPage({ isAdmin, reloadGroups }) {
     if (name.trim().length < 2) return setMsg('❌ ' + t('groupNameShort'));
     if (!tid) return setMsg('❌ ' + t('teacherRequired'));
     if (startD && endD && endD < startD) return setMsg('❌ ' + t('endBeforeStart'));
-    run(() => api('/api/teacher/groups', { method: 'POST', body: { name, teacherId: tid, description: desc, maxStudents: maxN || null, startDate: startD || null, endDate: endD || null } })
-      .then(() => { setName(''); setDesc(''); setTid(''); setMaxN(''); setStartD(''); setEndD(''); }), t('groupCreated'));
+    if (badSchedule(sched)) return setMsg('❌ ' + t('lessonTo') + ' > ' + t('lessonFrom'));
+    run(async () => {
+      const g = await api('/api/teacher/groups', { method: 'POST', body: { name, teacherId: tid, description: desc, maxStudents: maxN || null, startDate: startD || null, endDate: endD || null } });
+      if (sched.length) await api(`/api/teacher/groups/${g.id}/schedule`, { method: 'PUT', body: { slots: sched } });
+      setName(''); setDesc(''); setTid(''); setMaxN(''); setStartD(''); setEndD(''); setSched([]);
+    }, t('groupCreated'));
   };
   const toggleOpen = async (g) => {
     if (open === g.id) return setOpen(null);
@@ -494,6 +526,7 @@ export function GroupsPage({ isAdmin, reloadGroups }) {
             <label>{t('maxStudents')}<input type="number" min="1" max="1000" value={maxN} onChange={(e) => setMaxN(e.target.value)} placeholder="25" /></label>
             <label>{t('startDate')}<input type="date" value={startD} onChange={(e) => setStartD(e.target.value)} /></label>
             <label>{t('endDate')}<input type="date" value={endD} min={startD || undefined} onChange={(e) => setEndD(e.target.value)} /></label>
+            <ScheduleEditor value={sched} onChange={setSched} />
           </div>
           {teachers.length === 0 && <p className="err">{t('noActiveTeachers')}</p>}
           <button className="dbtn" disabled={busy || teachers.length === 0}>{t('createGroup')}</button>
@@ -511,21 +544,22 @@ export function GroupsPage({ isAdmin, reloadGroups }) {
           <div key={g.id} className="grow-item">
             <div className="drow" style={{ borderTop: 0 }}>
               {editing && editing.id === g.id ? (
-                <form className="dtools" style={{ margin: 0, flex: 1 }} onSubmit={(e) => { e.preventDefault(); run(() => api(`/api/teacher/groups/${g.id}`, { method: 'PATCH', body: { name: editing.name, description: editing.description, teacherId: editing.teacherId || null, maxStudents: editing.maxStudents || null, startDate: editing.startDate || null, endDate: editing.endDate || null } }), t('saved')); }}>
+                <form className="dtools" style={{ margin: 0, flex: 1 }} onSubmit={(e) => { e.preventDefault(); if (badSchedule(editing.schedule)) return setMsg('❌ ' + t('lessonTo') + ' > ' + t('lessonFrom')); run(async () => { await api(`/api/teacher/groups/${g.id}`, { method: 'PATCH', body: { name: editing.name, description: editing.description, teacherId: editing.teacherId || null, maxStudents: editing.maxStudents || null, startDate: editing.startDate || null, endDate: editing.endDate || null } }); await api(`/api/teacher/groups/${g.id}/schedule`, { method: 'PUT', body: { slots: editing.schedule || [] } }); }, t('saved')); }}>
                   <input value={editing.name} maxLength={60} onChange={(e) => setEditing({ ...editing, name: e.target.value })} required />
                   <input value={editing.description} maxLength={300} placeholder={t('groupDescPh')} onChange={(e) => setEditing({ ...editing, description: e.target.value })} />
                   <TeacherSelect teachers={teachers} value={editing.teacherId} onChange={(v) => setEditing({ ...editing, teacherId: v })} />
                   <input type="number" min="1" max="1000" value={editing.maxStudents} placeholder={t('maxStudents')} onChange={(e) => setEditing({ ...editing, maxStudents: e.target.value })} aria-label={t('maxStudents')} />
                   <input type="date" value={editing.startDate} onChange={(e) => setEditing({ ...editing, startDate: e.target.value })} aria-label={t('startDate')} />
                   <input type="date" value={editing.endDate} min={editing.startDate || undefined} onChange={(e) => setEditing({ ...editing, endDate: e.target.value })} aria-label={t('endDate')} />
+                  <div style={{ flexBasis: '100%' }}><ScheduleEditor value={editing.schedule || []} onChange={(v) => setEditing({ ...editing, schedule: v })} /></div>
                   <button className="dbtn" disabled={busy}>{t('save')}</button><button type="button" className="dbtn ghost" onClick={() => setEditing(null)}>{t('cancel')}</button>
                 </form>
               ) : (
-                <span><b>{g.name}</b> <small className="muted">· {g.members}{g.max_students ? ' / ' + g.max_students : ''} {t('studentsLower')} · {g.attendance_records} {t('attRecords')} · {g.teacher_name ? g.teacher_name : t('noTeacherAssigned')}</small>{g.archived_at && <small className="muted"> · {t('archivedOn')} {fmtDate(g.archived_at)}</small>}{g.description && <><br /><small className="muted">{g.description}</small></>}</span>
+                <span><b>{g.name}</b> <small className="muted">· {g.members}{g.max_students ? ' / ' + g.max_students : ''} {t('studentsLower')} · {g.attendance_records} {t('attRecords')} · {g.teacher_name ? g.teacher_name : t('noTeacherAssigned')}</small>{g.archived_at && <small className="muted"> · {t('archivedOn')} {fmtDate(g.archived_at)}</small>}{g.description && <><br /><small className="muted">{g.description}</small></>}<br /><span className="schedsum"><Icon name="clock" size={12} /> {scheduleText(g.schedule)}</span></span>
               )}
               <span className="acts">
                 <button className="dbtn ghost" onClick={() => toggleOpen(g)}>{open === g.id ? t('hide') : t('viewStudents')}</button>
-                {isAdmin && !g.archived_at && <button className="dbtn ghost" onClick={() => setEditing({ id: g.id, name: g.name, description: g.description || '', teacherId: g.teacher_id || '', maxStudents: g.max_students || '', startDate: g.start_date || '', endDate: g.end_date || '' })}><Icon name="edit" size={16} /> {t('edit')}</button>}
+                {isAdmin && !g.archived_at && <button className="dbtn ghost" onClick={() => setEditing({ id: g.id, name: g.name, description: g.description || '', teacherId: g.teacher_id || '', maxStudents: g.max_students || '', startDate: g.start_date || '', endDate: g.end_date || '', schedule: g.schedule || [] })}><Icon name="edit" size={16} /> {t('edit')}</button>}
                 {isAdmin && !g.archived_at && <button className="dbtn" onClick={() => setDlg({ type: 'archive', g })}><Icon name="archive" size={16} /> {t('archive')}</button>}
                 {isAdmin && g.archived_at && <button className="dbtn" onClick={() => run(() => api(`/api/teacher/groups/${g.id}/unarchive`, { method: 'POST' }), t('restored'))}><Icon name="restore" size={16} /> {t('restore')}</button>}
                 {isAdmin && <button className="dbtn danger" onClick={() => setDlg({ type: 'delete', g })}><Icon name="trash" size={16} /> {t('remove')}</button>}
@@ -559,31 +593,18 @@ export function GroupsPage({ isAdmin, reloadGroups }) {
 }
 
 /* ---------- Teachers (admin only) ---------- */
-export function TeachersPage({ onNav, onChat }) {
+export function TeachersPage({ onNav }) {
   const [search, setSearch] = useState('');
   const q = useDebounced(search);
   const [rows, setRows] = useState(null);
   const [err, setErr] = useState('');
-  const [selId, setSelId] = useState(null);
-  const [ov, setOv] = useState(null);
-  const [ovErr, setOvErr] = useState('');
-  const [tab, setTab] = useState('overview');
   useEffect(() => {
     setErr('');
-    api('/api/admin/teachers?' + qs({ search: q })).then((r) => { setRows(r); setSelId((c) => (c && r.some((x) => x.id === c) ? c : r[0] ? r[0].id : null)); }).catch((x) => setErr(apiError(x)));
+    api('/api/admin/teachers?' + qs({ search: q })).then(setRows).catch((x) => setErr(apiError(x)));
   }, [q]);
-  useEffect(() => {
-    if (!selId) { setOv(null); return; }
-    setOv(null); setOvErr('');
-    api(`/api/admin/teachers/${selId}/overview`).then(setOv).catch((x) => setOvErr(apiError(x)));
-  }, [selId]);
-  const isOnline = (r) => !!(r.last_seen_at && Date.now() - new Date(r.last_seen_at).getTime() < 5 * 60 * 1000);
-  const Badge = ({ r }) => <span className={'tbadge' + (isOnline(r) ? ' on' : '')}><i />{isOnline(r) ? t('online') : t('offline')}</span>;
-  const sel = rows && rows.find((x) => x.id === selId);
-  const act = ov ? ov.groups.filter((g) => !g.archived_at) : [];
-  const pct = (v) => (v === null || v === undefined ? '–' : v + '%');
   return (
-    <div className="tpage">
+    <div className="dcard">
+      <h3><Icon name="teachers" size={20} /> {t('teachers')} {rows && <span className="countbadge">{rows.length}</span>}</h3>
       <div className="dtools">
         <input placeholder={t('searchStudents')} value={search} onChange={(e) => setSearch(e.target.value)} aria-label={t('search')} />
         <button className="dbtn" onClick={() => onNav('promo')}><Icon name="promo" size={16} /> {t('createPromo')}</button>
@@ -592,81 +613,16 @@ export function TeachersPage({ onNav, onChat }) {
       {!rows && !err && <p className="muted">{t('loading')}</p>}
       {rows && rows.length === 0 && <p className="muted">{search ? t('noResults') : t('noTeachers')}</p>}
       {rows && rows.length > 0 && (
-        <div className="tcards">
-          {rows.map((r) => (
-            <button type="button" key={r.id} className={'tcard' + (r.id === selId ? ' on' : '')} onClick={() => { setSelId(r.id); setTab('overview'); }}>
-              <span className="tav"><Ava u={r} size={92} /><Badge r={r} /></span>
-              <b>{r.full_name}</b>
-              <small>{r.group_count} {t('groupsLower')}{r.is_active === false ? ' · ' + t('inactive') : ''}</small>
-              <span className="tview">{t('viewProfile')} <Icon name="next" size={14} /></span>
-            </button>
-          ))}
-        </div>
-      )}
-      {sel && (
-        <div className="tdetail">
-          <aside className="tprofile">
-            <span className="tbig"><Ava u={sel} size={132} /></span>
-            <Badge r={sel} />
-            <h3>{sel.full_name}</h3>
-            <small className="muted">{t('roleTeacher')}</small>
-            <div className="tcontact">
-              <span className="ico-inline"><Icon name="mail" size={15} /> {sel.email}</span>
-              <span className="ico-inline"><Icon name="chat" size={15} /> {sel.phone || <NP />}</span>
-              <span className="ico-inline"><Icon name="calendar" size={15} /> {t('joined')}: {fmtDate(sel.created_at)}</span>
-            </div>
-            {onChat && <button type="button" className="dbtn startbtn" onClick={onChat}><Icon name="chat" size={16} /> {t('message')}</button>}
-          </aside>
-          <section className="tmain">
-            <div className="ttabs" role="tablist">
-              {[['overview', 'home', t('overview')], ['groups', 'groups', `${t('groups')}`], ['analytics', 'chart', t('analyticsTab')]].map(([k, ic, lb]) => (
-                <button type="button" key={k} role="tab" aria-selected={tab === k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>
-                  <Icon name={ic} size={16} /> {lb}{k === 'groups' && ov && <span className="countbadge">{ov.groups.length}</span>}
-                </button>
-              ))}
-            </div>
-            {ovErr && <div className="err">{ovErr}</div>}
-            {!ov && !ovErr && <p className="muted">{t('loading')}</p>}
-            {ov && tab === 'overview' && (
-              <>
-                <div className="tstats">
-                  <div className="tstat"><Icon name="groups" size={28} /><div><b>{ov.stats.groups}</b><small>{t('groups')}</small></div></div>
-                  <div className="tstat"><span className="tring" style={{ background: `conic-gradient(#22b573 ${(ov.stats.homework_pct || 0) * 3.6}deg, var(--d-line) 0)` }}><i>{pct(ov.stats.homework_pct)}</i></span><div><b>{t('overallProgress')}</b><small>{t('homework')}</small></div></div>
-                  <div className="tstat"><Icon name="users" size={28} /><div><b>{ov.stats.students}</b><small>{t('students')}</small></div></div>
-                </div>
-                <div className="tgroups wide">
-                  <div className="tgh"><b>{t('activeGroups')}</b><a onClick={() => setTab('groups')}>{t('seeAll')} <Icon name="next" size={14} /></a></div>
-                  {act.length === 0 && <p className="muted">{t('noGroups')}</p>}
-                  {act.map((g) => (
-                    <div key={g.id} className="tgrow"><Icon name="groups" size={18} /><span className="tgn">{g.name}</span><span className="tgs">{g.students} {t('studentsLower')}</span><span className="spill present">{t('active')}</span></div>
-                  ))}
-                </div>
-              </>
-            )}
-            {ov && tab === 'groups' && (
-              <div className="tgroups wide">
-                {ov.groups.length === 0 && <p className="muted">{t('noGroups')}</p>}
-                {ov.groups.map((g) => (
-                  <div key={g.id} className="tgrow"><Icon name="groups" size={18} /><span className="tgn">{g.name}</span><span className="tgs">{g.students} {t('studentsLower')}</span>
-                    <span className="tgs">{t('homework')} {pct(g.hw_pct)}</span><span className="tgs">{t('attendance')} {pct(g.att_pct)}</span>
-                    <span className={'spill ' + (g.archived_at ? 'unmarked' : 'present')}>{g.archived_at ? t('archived') : t('active')}</span></div>
-                ))}
-              </div>
-            )}
-            {ov && tab === 'analytics' && (
-              <div className="tgroups wide">
-                {ov.groups.filter((g) => !g.archived_at).length === 0 && <p className="muted">{t('noGroups')}</p>}
-                {ov.groups.filter((g) => !g.archived_at).map((g) => (
-                  <div key={g.id} className="tbars"><b>{g.name}</b>
-                    <span className="tbar"><small>{t('homework')}</small><span><i style={{ width: (g.hw_pct || 0) + '%' }} /></span><em>{pct(g.hw_pct)}</em></span>
-                    <span className="tbar att"><small>{t('attendance')}</small><span><i style={{ width: (g.att_pct || 0) + '%' }} /></span><em>{pct(g.att_pct)}</em></span>
-                  </div>
-                ))}
-                <p className="muted small">{t('calcMethod')}</p>
-              </div>
-            )}
-          </section>
-        </div>
+        <div className="tblwrap"><table className="dt">
+          <thead><tr><th className="left">#</th><th className="left">{t('teachers')}</th><th className="left hide-sm">{t('email')}</th><th className="left hide-sm">{t('phone')}</th><th className="left">{t('statusLbl')}</th><th className="left hide-sm">{t('joined')}</th></tr></thead>
+          <tbody>{rows.map((r, i) => (
+            <tr key={r.id}><td>{i + 1}</td>
+              <td className="left"><span className="who"><Ava u={r} /> <b>{r.full_name}</b></span></td>
+              <td className="left hide-sm">{r.email}</td>
+              <td className="left hide-sm">{r.phone || <NP />}</td>
+              <td className="left"><span className={'spill ' + (r.is_active === false ? 'absent' : 'present')}>{r.is_active === false ? t('inactive') : t('active')}</span></td>
+              <td className="left hide-sm">{fmtDate(r.created_at)}</td></tr>
+          ))}</tbody></table></div>
       )}
     </div>
   );
