@@ -155,8 +155,11 @@ export default function StudentHome({ user, nav, onHomework, StoryViewer }) {
           <div className="sh-stories">
             {stories.slice(0, 3).map((s, i) => (
               <button type="button" key={s.id} className="sh-story" onClick={() => setStory(i)}>
-                {s.media_type === 'image' ? <img src={API + s.media_url} alt="" /> : <span className="sh-vid"><Icon name="play" size={22} /></span>}
-                <span>{s.title || s.category}</span>
+                <span className="sh-circ">
+                  {s.media_type === 'image' ? <img src={API + s.media_url} alt="" /> : <video src={API + s.media_url + '#t=0.3'} muted playsInline preload="metadata" />}
+                  {s.media_type !== 'image' && <span className="sh-play"><Icon name="play" size={20} /></span>}
+                  <span className="sh-cap2">{s.title || s.category}</span>
+                </span>
               </button>
             ))}
           </div>
@@ -187,8 +190,8 @@ export default function StudentHome({ user, nav, onHomework, StoryViewer }) {
         <div className="sh-head"><h3><Icon name="gamepad" size={20} className="blue" /> {t('gamesTitle')}</h3></div>
         <div className="sh-games">
           {games.map(([k, ic, c]) => (
-            <button type="button" key={k} className={'sh-game ' + c} onClick={() => { setSoon(k); setTimeout(() => setSoon(''), 1800); }}>
-              <Icon name={ic} size={28} /><span>{t(k)}</span><Icon name="chevR" size={16} className="sh-gchev" />{soon === k && <em>{t('gSoon')}</em>}
+            <button type="button" key={k} className={'sh-game ' + c} onClick={() => nav('games', { game: k })}>
+              <Icon name={ic} size={28} /><span>{t(k)}</span><Icon name="chevR" size={16} className="sh-gchev" />
             </button>
           ))}
         </div>

@@ -8,6 +8,7 @@ import { LogoutDialog, LangPanel, HelpPanel } from './Dialogs.jsx';
 import { StudentsPage, DayAttendancePage, RankingsPage, AnalyticsPage, StudentProfile, GroupsPage, TeachersPage, EventsAllPage, Modal } from './Pages.jsx';
 import { Icon, AppIcon, Status } from './icons.jsx';
 import { nextTheme, themeIcon, themeKey } from './theme.js';
+import Games from './Games.jsx';
 import StudentHomeNew, { greeting } from './StudentHome.jsx';
 import { HomeworkStaff, HomeworkMatrix, StudentHomework, StudentRewards } from './Homework.jsx';
 import { Ava, Stat, iso, dayLabel, longDay, relName, addDays, rateText } from './ui.jsx';
@@ -17,7 +18,7 @@ const NAV = [
   ['stories', 'stories'], ['events', 'events'], ['homework', 'homework'], ['grades', 'grades'], ['courses', 'courses'],
   ['battles', 'battles'], ['coins', 'coins'], ['teachers', 'teachers'],
 ];
-const LIVE = ['home', 'students', 'progress', 'attendance', 'groups', 'dayatt', 'rankings', 'analytics', 'community', 'stories', 'events', 'eventsall', 'homework', 'ranking', 'points', 'coins', 'teachers', 'promo', 'profile', 'settings'];
+const LIVE = ['home', 'students', 'progress', 'attendance', 'groups', 'dayatt', 'rankings', 'analytics', 'community', 'stories', 'events', 'eventsall', 'homework', 'ranking', 'points', 'coins', 'teachers', 'promo', 'profile', 'settings', 'games'];
 const ST = { present: 'P', late: 'L', absent: 'A', excused: 'E' };
 const NEXT = { '': 'present', present: 'late', late: 'absent', absent: '', excused: '' };
 
@@ -510,6 +511,7 @@ export default function Dashboard({ user, StoryForm, EventForm, Feed, StudentHom
           {page === 'home' && !isStudent && <Home groups={groups} user={user} Feed={Feed} nav={navTo} onOpen={openStudent} />}
           {isStudent && page === 'home' && <StudentHomeNew user={user} nav={navTo} onHomework={() => navTo('homework')} StoryViewer={StoryViewer} />}
           {isStudent && page === 'homework' && <StudentHomework me={user} onDeep={onHwDeep} />}
+          {isStudent && page === 'games' && <Games game={params.game} onBack={goBack} />}
           {isStudent && page === 'events' && <EventsAllPage />}
           {isStudent && page === 'ranking' && StudentRanking && <StudentRanking me={user} />}
           {isStudent && page === 'points' && <StudentRewards mode="points" />}
@@ -535,10 +537,10 @@ export default function Dashboard({ user, StoryForm, EventForm, Feed, StudentHom
       </main>
       {(
         <nav className="dbnav" aria-label="Main">
-          {(isStudent ? ['home', 'events', 'homework', 'profile'] : isAdmin ? ['home', 'students', 'attendance', 'groups'] : ['home', 'students', 'attendance', 'homework', 'community']).map((k) => (
+          {(isStudent ? ['home', 'events', 'homework', 'profile'] : isAdmin ? ['home', 'students', 'attendance', 'groups', 'profile'] : ['home', 'students', 'attendance', 'homework', 'profile']).map((k) => (
             <button key={k} type="button" className={navActive === k ? 'on' : ''} onClick={() => (k === 'community' ? onChat() : go(k))}>{k === 'profile' ? <Icon name="user" size={24} /> : <AppIcon name={k} size={26} />}<span>{t(k)}</span></button>
           ))}
-          <button type="button" onClick={() => setSide(true)}><Icon name="menu" size={22} /><span>{t('more')}</span></button>
+          {isStudent && <button type="button" onClick={() => setSide(true)}><Icon name="menu" size={22} /><span>{t('more')}</span></button>}
         </nav>
       )}
 

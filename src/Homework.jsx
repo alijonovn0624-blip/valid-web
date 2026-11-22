@@ -568,13 +568,7 @@ function VocabFlow({ hw, onBack, onChanged }) {
               onChange={(e) => { const v = e.target.value.replace(/\s/g, '').slice(0, need); setTyped(v); check(v); }} />
           </div>
           {err && <div className="err">{err} <button type="button" className="dbtn ghost" onClick={() => check(typed)}>{t('retry')}</button></div>}
-          {fb && (
-            <div className={'mcqsheet ' + fb}>
-              <div className="mcqverdict"><span className="mcqmark">{fb === 'ok' ? <Icon name="check" size={22} strokeWidth={3} /> : <Icon name="close" size={22} strokeWidth={3} />}</span><b>{fb === 'ok' ? t('correctExcl') : t('wrongAnswer')}</b></div>
-              {fb === 'bad' && <p className="twright">{t('rightWas')}: <b>{w.word}</b></p>}
-              <button type="button" className="mcqcont" onClick={next}>{t('continueBtn')}</button>
-            </div>
-          )}
+          {fb && <button type="button" className="mcqcont tw-next" autoFocus onClick={next}>{t('continueBtn')}</button>}
         </div>
       )}
       {phase === 'results' && (
