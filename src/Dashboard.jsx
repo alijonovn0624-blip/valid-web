@@ -9,6 +9,7 @@ import { StudentsPage, DayAttendancePage, RankingsPage, AnalyticsPage, StudentPr
 import { Icon, AppIcon, Status } from './icons.jsx';
 import { nextTheme, themeIcon, themeKey } from './theme.js';
 import Games from './Games.jsx';
+import { VocabStudent, VocabAdmin } from './Vocab.jsx';
 import StudentHomeNew, { greeting } from './StudentHome.jsx';
 import { HomeworkStaff, HomeworkMatrix, StudentHomework, StudentRewards } from './Homework.jsx';
 import { Ava, Stat, iso, dayLabel, longDay, relName, addDays, rateText } from './ui.jsx';
@@ -18,7 +19,7 @@ const NAV = [
   ['stories', 'stories'], ['events', 'events'], ['homework', 'homework'], ['grades', 'grades'], ['courses', 'courses'],
   ['battles', 'battles'], ['coins', 'coins'], ['teachers', 'teachers'],
 ];
-const LIVE = ['home', 'students', 'progress', 'attendance', 'groups', 'dayatt', 'rankings', 'analytics', 'community', 'stories', 'events', 'eventsall', 'homework', 'ranking', 'points', 'coins', 'teachers', 'promo', 'profile', 'settings', 'games'];
+const LIVE = ['home', 'students', 'progress', 'attendance', 'groups', 'dayatt', 'rankings', 'analytics', 'community', 'stories', 'events', 'eventsall', 'homework', 'ranking', 'points', 'coins', 'teachers', 'promo', 'profile', 'settings', 'games', 'vocab'];
 const ST = { present: 'P', late: 'L', absent: 'A', excused: 'E' };
 const NEXT = { '': 'present', present: 'late', late: 'absent', absent: '', excused: '' };
 
@@ -427,7 +428,7 @@ export default function Dashboard({ user, StoryForm, EventForm, Feed, StudentHom
 
   // O'qituvchi menyusida Stories, Events va Teachers yo'q (faqat admin). Dashboard bosh sahifasidagi Stories/Events ko'rinishi saqlanadi.
   const STUDENT_NAV = [['home', 'home'], ['homework', 'homework'], ['events', 'events'], ['ranking', 'trophy'], ['points', 'star'], ['coins', 'coins'], ['community', 'community']];
-  const nav = isStudent ? STUDENT_NAV : isAdmin ? [...NAV, ['promo', 'promo']] : NAV.filter(([k]) => !['stories', 'events', 'teachers'].includes(k));
+  const nav = isStudent ? STUDENT_NAV : isAdmin ? [...NAV, ['vocab', 'homework'], ['promo', 'promo']] : NAV.filter(([k]) => !['stories', 'events', 'teachers'].includes(k));
   const titleKey = { profile: 'personalInfo', settings: 'settings', dayatt: 'attendance', rankings: 'ranking', analytics: 'attRate', eventsall: 'events' }[page] || page;
   const navActive = { dayatt: 'attendance', analytics: 'attendance' }[page] || page;
   // Every card/menu goes through navTo so list pages always open with the right filters (and remount cleanly)
@@ -511,6 +512,8 @@ export default function Dashboard({ user, StoryForm, EventForm, Feed, StudentHom
           {page === 'home' && !isStudent && <Home groups={groups} user={user} Feed={Feed} nav={navTo} onOpen={openStudent} />}
           {isStudent && page === 'home' && <StudentHomeNew user={user} nav={navTo} onHomework={() => navTo('homework')} StoryViewer={StoryViewer} />}
           {isStudent && page === 'homework' && <StudentHomework me={user} onDeep={onHwDeep} />}
+          {isStudent && page === 'vocab' && <VocabStudent />}
+          {isAdmin && page === 'vocab' && <VocabAdmin />}
           {isStudent && page === 'games' && <Games game={params.game} onBack={goBack} />}
           {isStudent && page === 'events' && <EventsAllPage />}
           {isStudent && page === 'ranking' && StudentRanking && <StudentRanking me={user} />}
