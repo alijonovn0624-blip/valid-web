@@ -689,8 +689,8 @@ export function StudentHomework({ me, onDeep }) {
   const lastReload = useRef(0);
   const clock = useClock(serverNow);
   const nowMs = clock();
-  const load = () => Promise.all([api('/api/homework'), api('/api/homework/lock-status')])
-    .then(([l, s]) => { setList(l); setSt(s); setServerNow(s.server_now); setErr(''); lastReload.current = Date.now(); })
+  const load = () => Promise.all([api('/api/homework'), api('/api/homework/lock-status').catch(() => null)]) // an older server without lock-status must not hide the units
+    .then(([l, s]) => { setList(l); setSt(s); setServerNow(s && s.server_now); setErr(''); lastReload.current = Date.now(); })
     .catch((x) => setErr(apiError(x)));
   useEffect(() => { load(); api('/api/points/ranking').then(setRk).catch(() => {}); api('/api/community/groups').then((g) => setNoGroup(g.length === 0)).catch(() => {}); const id = setInterval(load, 60000); return () => clearInterval(id); }, []);
   useEffect(() => { onDeep && onDeep(open !== null); }, [open]);
@@ -701,8 +701,8 @@ export function StudentHomework({ me, onDeep }) {
   const sec = Math.floor(nowMs / 1000);
   useEffect(() => {
     if (!list || !st || Date.now() - lastReload.current < 2500) return;
-    const expired = list.some((h) => h.locked && h.opens_at && Date.parse(h.opens_at) <= nowMs) || (st.in_lesson && Date.parse(st.opens_at) <= nowMs)
-      || (!st.in_lesson && st.next_lesson_start && Date.parse(st.next_lesson_start) <= nowMs);
+    const expired = list.some((h) => h.locked && h.opens_at && Date.parse(h.opens_at) <= nowMs) || (st && st.in_lesson && Date.parse(st.opens_at) <= nowMs)
+      || (st && !st.in_lesson && st.next_lesson_start && Date.parse(st.next_lesson_start) <= nowMs);
     if (expired) load();
   }, [sec]);
 
