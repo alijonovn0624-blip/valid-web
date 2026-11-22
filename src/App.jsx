@@ -7,6 +7,7 @@ import { StudentHomework, StudentRewards } from './Homework.jsx';
 import Dashboard from './Dashboard.jsx';
 import { t, setLang, LANGS, apiError } from './i18n.js';
 import { Icon, AppIcon, Status } from './icons.jsx';
+import { isTheme, nextTheme, themeIcon } from './theme.js';
 import { useCountdown, CountdownText, Stat } from './ui.jsx';
 
 const fmt = (d) => new Date(d).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' });
@@ -76,7 +77,7 @@ function Login({ onDone, theme, setTheme, lang, changeLang }) {
       <select value={lang} onChange={(e) => changeLang(e.target.value)}>
         {LANGS.map(([k, n]) => <option key={k} value={k}>{n}</option>)}
       </select>
-      <button type="button" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} aria-label="theme">{theme === 'dark' ? <Icon name="moon" size={20} /> : <Icon name="sun" size={20} />}</button>
+      <button type="button" onClick={() => setTheme(nextTheme(theme))} aria-label="theme"><Icon name={themeIcon(theme)} size={20} /></button>
     </div>
   );
 
@@ -520,7 +521,7 @@ export default function App() {
         const u = await api('/api/auth/me');
         setNetErr(false); setUser(u);
         if (u.language) { setLang(u.language); setL(u.language); }
-        if (u.theme) setTheme(u.theme);
+        if (isTheme(u.theme)) setTheme(u.theme);
         setReady(true); return;
       } catch (x) {
         if (x.status === 401 || x.status === 403) { localStorage.removeItem('token'); setUser(null); setReady(true); return; }
@@ -536,7 +537,7 @@ export default function App() {
   if (!user) return <Login onDone={loadMe} theme={theme} setTheme={setTheme} lang={lang} changeLang={changeLang} />;
 
   const staff = user.role !== 'student';
-  if ((staff && view === 'dash') || (!staff && desktop))
+  if (!staff || view === 'dash') // students always get the responsive dashboard (phone and desktop); staff use the phone shell only when they leave the dashboard view
     return (
       <>
         <Dashboard user={user} StoryForm={StoryForm} EventForm={EventForm} Feed={Feed} StudentHome={Home} StoryViewer={StoryViewer} StudentRanking={Ranking} onHwDeep={setHwDeep} hwDeep={hwDeep} unread={unread} onChat={() => setChatOpen(true)}

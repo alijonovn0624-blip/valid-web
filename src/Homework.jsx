@@ -684,6 +684,7 @@ export function StudentHomework({ me, onDeep }) {
   const [noGroup, setNoGroup] = useState(false);
   const [sel, setSel] = useState(null);
   const [info, setInfo] = useState(null);
+  const [rk, setRk] = useState({});
   const rail = useRef(null);
   const lastReload = useRef(0);
   const clock = useClock(serverNow);
@@ -691,7 +692,7 @@ export function StudentHomework({ me, onDeep }) {
   const load = () => Promise.all([api('/api/homework'), api('/api/homework/lock-status')])
     .then(([l, s]) => { setList(l); setSt(s); setServerNow(s.server_now); setErr(''); lastReload.current = Date.now(); })
     .catch((x) => setErr(apiError(x)));
-  useEffect(() => { load(); api('/api/community/groups').then((g) => setNoGroup(g.length === 0)).catch(() => {}); const id = setInterval(load, 60000); return () => clearInterval(id); }, []);
+  useEffect(() => { load(); api('/api/points/ranking').then(setRk).catch(() => {}); api('/api/community/groups').then((g) => setNoGroup(g.length === 0)).catch(() => {}); const id = setInterval(load, 60000); return () => clearInterval(id); }, []);
   useEffect(() => { onDeep && onDeep(open !== null); }, [open]);
 
   const course = useMemo(() => buildCourse(list), [list]);
@@ -726,8 +727,11 @@ export function StudentHomework({ me, onDeep }) {
   };
   if (open) return <Unit id={open} onBack={() => { setOpen(null); load(); }} onListChanged={load} />;
 
-  const pcts = flat.filter((it) => it.kind === 'hw').map((it) => ({ it, s: unitState(it, nowMs) })).filter((x) => x.s.state === 'open');
-  const level = pcts.length ? Math.round(pcts.reduce((a, x) => a + x.s.pct, 0) / pcts.length) : 0;
+  // yellow ring round the avatar = progress of the unit that is on screen (3 lessons); on the Final Exam card it is the whole course
+  const pctOf = (it) => { if (it.kind !== 'hw') return 0; const x = unitState(it, nowMs); return x.state === 'open' ? x.pct : 0; };
+  const selGroup = course.find((g) => g.items.some((x) => x.i === sel));
+  const ringItems = selGroup && selGroup.k !== 'final' ? selGroup.items : flat.filter((x) => x.kind !== 'exam');
+  const ringPct = ringItems.length ? Math.round(ringItems.reduce((a, x) => a + pctOf(x), 0) / ringItems.length) : 0;
   const clickCard = (it) => {
     if (it.i !== sel) { setSel(it.i); centre(it.i); return; }
     const s = unitState(it, nowMs);
@@ -753,33 +757,23 @@ export function StudentHomework({ me, onDeep }) {
         </div>
       )}
       {st && !st.has_schedule && <p className="muted small">{t('noScheduleNote')}</p>}
-      <div className="lprofile">
-        <span className="lpill"><Icon name="star" size={18} fill="currentColor" /> {me ? me.points : 0}</span>
-        <span className="lavatar">{me && me.avatar_url ? <img src={API + me.avatar_url} alt="" /> : <b>{me ? (me.full_name || '?')[0] : '?'}</b>}</span>
-        <span className="lpill"><Icon name="coins" size={18} /> {me ? me.coins : 0}</span>
+      <div className="lhead">
+        <span className="lring" style={{ '--p': ringPct }} title={ringPct + '%'} role="img" aria-label={ringPct + '%'}>
+          <span className="lavatar">{me && me.avatar_url ? <img src={API + me.avatar_url} alt="" /> : <b>{me ? (me.full_name || '?')[0] : '?'}</b>}</span>
+        </span>
+        <div className="ltiles">
+          <div className="ltile"><Icon name="trophy" size={26} className="lt-g" /><span><b>{rk.group_rank ? '#' + rk.group_rank : '–'}</b><small>{t('hwGroupRank')}</small></span></div>
+          <div className="ltile"><Icon name="trophy" size={26} className="lt-b" /><span><b>{rk.global_rank ? '#' + rk.global_rank : '–'}</b><small>{t('hwOverallRank')}</small></span></div>
+          <div className="ltile"><Icon name="star" size={26} fill="currentColor" className="lt-y" /><span><b>{me ? me.points : 0}</b><small>{t('points')}</small></span></div>
+          <div className="ltile"><Icon name="coins" size={26} className="lt-o" /><span><b>{me ? me.coins : 0}</b><small>{t('coins')}</small></span></div>
+        </div>
       </div>
-      <div className="lbar" title={t('hwResult')}><i style={{ width: level + '%' }} /><em>{t('hwResult')} {level}%</em></div>
       {err && <div className="err">{err}</div>}
       {!list && !err && <p className="muted">{t('loading')}</p>}
       {list && noGroup && <p className="muted">{t('notInGroup')}</p>}
       {list && !noGroup && !anyContent && <p className="muted">{t('noHomework')}</p>}
       {list && !noGroup && (
         <>
-          <div className="lunits">
-            {course.map((g) => (
-              g.k === 'final'
-                ? <div key="final" className="lunit"><button type="button" className={'lfinal' + (g.items[0].i === sel ? ' sel' : '')} onClick={() => { setSel(g.items[0].i); centre(g.items[0].i); }}><Icon name="lock" size={14} /> {t('finalExam')}</button></div>
-                : (
-                  <div key={g.k} className="lunit">
-                    <span className={'lunitname' + (g.items.some((x) => x.i === sel) ? ' on' : '')}>{g.k === 0 ? t('homework') : `${t('unitWord')} ${g.k}`}</span>
-                    <div className="lchips">{g.items.map((it) => {
-                      const s = unitState(it, nowMs);
-                      return <button key={it.key} type="button" className={'lchip' + (s.state === 'open' ? (s.pct >= 100 ? ' done' : '') : ' lk') + (it.i === sel ? ' sel' : '')} onClick={() => { setSel(it.i); centre(it.i); }}>{s.state === 'open' ? it.label : <><span>{it.label}</span><Icon name="lock" size={11} /></>}</button>;
-                    })}</div>
-                  </div>
-                )
-            ))}
-          </div>
           <div className="lrail" ref={rail} onScroll={onScroll}>
             {flat.map((it) => {
               const s = unitState(it, nowMs); const h = it.h;
@@ -803,6 +797,16 @@ export function StudentHomework({ me, onDeep }) {
               );
             })}
           </div>
+          {(() => {
+            const n = flat.length, W = 13; const a0 = n <= W ? 0 : Math.min(Math.max((sel === null ? 0 : sel) - 6, 0), n - W);
+            return (
+              <div className="ldots" role="tablist" aria-label={t('lessons')}>
+                {flat.slice(a0, a0 + W).map((it) => (
+                  <button key={it.key} type="button" role="tab" aria-selected={it.i === sel} aria-label={it.kind === 'exam' ? t('finalExam') : it.label} className={'ldot' + (it.i === sel ? ' on' : '')} onClick={() => { setSel(it.i); centre(it.i); }} />
+                ))}
+              </div>
+            );
+          })()}
         </>
       )}
       {info && <LockInfo it={info} nowMs={nowMs} onClose={() => setInfo(null)} />}

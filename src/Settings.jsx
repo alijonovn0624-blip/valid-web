@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { api, API } from './api';
 import { t, LANGS, apiError } from './i18n.js';
 import { LogoutDialog } from './Dialogs.jsx';
+import { THEMES, themeIcon, themeKey } from './theme.js';
 import { Modal } from './Pages.jsx';
 
 const AVATARS = Array.from({ length: 12 }, (_, k) => 'a' + String(k + 1).padStart(2, '0'));
@@ -126,9 +127,8 @@ export default function Settings({ user, reload, theme, setTheme, lang, changeLa
       {showPrefs && (
         <div className="card">
           <h3>{t('appearance')}</h3>
-          <div className="seg">
-            <button className={theme === 'dark' ? 'on' : ''} onClick={() => pickTheme('dark')}><Icon name="moon" size={16} /> {t('dark')}</button>
-            <button className={theme === 'light' ? 'on' : ''} onClick={() => pickTheme('light')}><Icon name="sun" size={16} /> {t('light')}</button>
+          <div className="seg wrap">
+            {THEMES.map((k) => <button key={k} className={theme === k ? 'on' : ''} onClick={() => pickTheme(k)}><Icon name={themeIcon(k)} size={16} /> {t(themeKey(k))}</button>)}
           </div>
           <h3>{t('language')}</h3>
           <div className="seg wrap">

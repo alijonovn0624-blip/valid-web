@@ -7,6 +7,7 @@ import { LogoutDialog, LangPanel, HelpPanel } from './Dialogs.jsx';
 
 import { StudentsPage, DayAttendancePage, RankingsPage, AnalyticsPage, StudentProfile, GroupsPage, TeachersPage, EventsAllPage, Modal } from './Pages.jsx';
 import { Icon, AppIcon, Status } from './icons.jsx';
+import { nextTheme, themeIcon, themeKey } from './theme.js';
 import StudentHomeNew, { greeting } from './StudentHome.jsx';
 import { HomeworkStaff, HomeworkMatrix, StudentHomework, StudentRewards } from './Homework.jsx';
 import { Ava, Stat, iso, dayLabel, longDay, relName, addDays, rateText } from './ui.jsx';
@@ -438,7 +439,7 @@ export default function Dashboard({ user, StoryForm, EventForm, Feed, StudentHom
   const openStudent = (id) => { setDetail(id); window.scrollTo(0, 0); };
   const open = (m) => { setModal(m); setMenu(false); setSide(false); };
   const toggleTheme = () => {
-    const v = theme === 'dark' ? 'light' : 'dark';
+    const v = nextTheme(theme);
     setTheme(v);
     api('/api/auth/profile', { method: 'PATCH', body: { theme: v } }).catch(() => {});
   };
@@ -466,15 +467,14 @@ export default function Dashboard({ user, StoryForm, EventForm, Feed, StudentHom
         </div>
       </aside>
 
-      <main className={'dmain' + (!isAdmin ? ' hasbnav' : '')} ref={mainRef}>
+      <main className={'dmain hasbnav'} ref={mainRef}>
         <header className="dhead">
-          <button className="dburger" onClick={() => setSide(true)} aria-label="menu"><Icon name="menu" size={22} /></button>
           {isStudent && page === 'home'
             ? <div className="dtitle"><h1>{greeting()}, <span className="hl">{user.full_name.split(' ')[0]}</span>! <Icon name="wave" size={26} className="wavei" /></h1><p>{t('keepLearning')}</p></div>
             : <div className="dtitle"><h1>{t(titleKey)}</h1><p>{t('welcome')}, {user.full_name.split(' ')[0]}!</p></div>}
           <div className="dright">
             <button className="dchat" onClick={onChat} aria-label="chat"><Icon name="chat" size={20} />{unread > 0 && <i>{unread > 9 ? '9+' : unread}</i>}</button>
-            <button className="dtheme" onClick={toggleTheme} aria-label="theme">{theme === 'dark' ? <Icon name="moon" size={20} /> : <Icon name="sun" size={20} />}</button>
+            <button className="dtheme" onClick={toggleTheme} aria-label="theme" title={t(themeKey(theme))}><Icon name={themeIcon(theme)} size={20} /></button>
             <div className="dprofwrap">
               <button className="dprof" onClick={() => setMenu((m) => !m)}>
                 <Ava u={user} size={40} />
@@ -491,7 +491,7 @@ export default function Dashboard({ user, StoryForm, EventForm, Feed, StudentHom
                     <button onClick={() => open('help')}><span className="ic"><Icon name="help" size={20} /></span>{t('help')}</button>
                     <hr />
                     <button onClick={() => open('lang')}><span className="ic"><Icon name="globe" size={20} /></span>{t('languages')}<em>{langName}</em></button>
-                    <button onClick={toggleTheme}><span className="ic">{theme === 'dark' ? <Icon name="moon" size={20} /> : <Icon name="sun" size={20} />}</span>{t('theme')}<span className={'switch ' + (theme === 'dark' ? 'on' : '')}><i /></span></button>
+                    <button onClick={toggleTheme}><span className="ic"><Icon name={themeIcon(theme)} size={20} /></span>{t('theme')}<em>{t(themeKey(theme))}</em></button>
                     <hr />
                     <button onClick={() => open('logout')}><span className="ic"><Icon name="logout" size={20} /></span>{t('logout')}</button>
                   </div>
@@ -532,9 +532,9 @@ export default function Dashboard({ user, StoryForm, EventForm, Feed, StudentHom
         {page === 'settings' && (<><Settings user={user} reload={reload} theme={theme} setTheme={setTheme} lang={lang} changeLang={changeLang} />{isAdmin && <EmailTest user={user} />}</>)}
         {!LIVE.includes(page) && <div className="dcard"><h3>{t(page)}</h3><p className="muted">{t('soon')}</p></div>}
       </main>
-      {!isAdmin && (
+      {(
         <nav className="dbnav" aria-label="Main">
-          {(isStudent ? ['home', 'events', 'homework', 'profile'] : ['home', 'students', 'attendance', 'homework', 'community']).map((k) => (
+          {(isStudent ? ['home', 'events', 'homework', 'profile'] : isAdmin ? ['home', 'students', 'attendance', 'groups'] : ['home', 'students', 'attendance', 'homework', 'community']).map((k) => (
             <button key={k} type="button" className={navActive === k ? 'on' : ''} onClick={() => (k === 'community' ? onChat() : go(k))}>{k === 'profile' ? <Icon name="user" size={24} /> : <AppIcon name={k} size={26} />}<span>{t(k)}</span></button>
           ))}
           <button type="button" onClick={() => setSide(true)}><Icon name="menu" size={22} /><span>{t('more')}</span></button>

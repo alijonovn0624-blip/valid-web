@@ -118,7 +118,7 @@ export default function StudentHome({ user, nav, onHomework, StoryViewer }) {
           </div>
         </section>
 
-        <section className="sh-card">
+        <section className="sh-card sh-events">
           <div className="sh-head"><h3><Icon name="calendar" size={20} className="blue" /> {t('upcomingEvents')}</h3><a className="sh-all" onClick={() => nav && nav('events')}>{t('seeAll')} →</a></div>
           {upcoming.length === 0 && <p className="muted">{t('noUpcoming')}</p>}
           {upcoming.map((e) => { const w = when(e.starts_at); return (
@@ -129,7 +129,7 @@ export default function StudentHome({ user, nav, onHomework, StoryViewer }) {
             </button>); })}
         </section>
 
-        <section className="sh-card">
+        <section className="sh-card sh-weekly">
           <div className="sh-head"><h3><Icon name="trophy" size={20} className="gold" /> {t('weeklyRanking')}</h3><a className="sh-all" onClick={() => nav && nav('ranking')}>{t('seeAll')} →</a></div>
           {weekly && weekly.top.map((u, i) => (
             <div key={u.id} className={'sh-rank' + (u.id === user.id ? ' me' : '')}>
@@ -149,7 +149,7 @@ export default function StudentHome({ user, nav, onHomework, StoryViewer }) {
       </div>
 
       <div className="sh-row4">
-        <section className="sh-card">
+        <section className="sh-card sh-storiesc">
           <div className="sh-head"><h3><Icon name="stories" size={20} className="blue" /> {t('stories')}</h3></div>
           {stories.length === 0 && <p className="muted">{t('noStory')}</p>}
           <div className="sh-stories">

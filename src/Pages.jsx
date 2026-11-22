@@ -598,10 +598,16 @@ export function TeachersPage({ onNav }) {
   const q = useDebounced(search);
   const [rows, setRows] = useState(null);
   const [err, setErr] = useState('');
-  useEffect(() => {
-    setErr('');
-    api('/api/admin/teachers?' + qs({ search: q })).then(setRows).catch((x) => setErr(apiError(x)));
-  }, [q]);
+  const [delDlg, setDelDlg] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const loadT = () => { setErr(''); return api('/api/admin/teachers?' + qs({ search: q })).then(setRows).catch((x) => setErr(apiError(x))); };
+  useEffect(() => { loadT(); }, [q]);
+  const removeTeacher = async () => {
+    setBusy(true);
+    try { await api(`/api/admin/teachers/${delDlg.id}`, { method: 'DELETE' }); setDelDlg(null); await loadT(); }
+    catch (x) { setErr(apiError(x)); setDelDlg(null); }
+    setBusy(false);
+  };
   return (
     <div className="dcard">
       <h3><Icon name="teachers" size={20} /> {t('teachers')} {rows && <span className="countbadge">{rows.length}</span>}</h3>
@@ -614,15 +620,22 @@ export function TeachersPage({ onNav }) {
       {rows && rows.length === 0 && <p className="muted">{search ? t('noResults') : t('noTeachers')}</p>}
       {rows && rows.length > 0 && (
         <div className="tblwrap"><table className="dt">
-          <thead><tr><th className="left">#</th><th className="left">{t('teachers')}</th><th className="left hide-sm">{t('email')}</th><th className="left hide-sm">{t('phone')}</th><th className="left">{t('statusLbl')}</th><th className="left hide-sm">{t('joined')}</th></tr></thead>
+          <thead><tr><th className="left">#</th><th className="left">{t('teachers')}</th><th className="left hide-sm">{t('email')}</th><th className="left hide-sm">{t('phone')}</th><th className="left">{t('statusLbl')}</th><th className="left hide-sm">{t('joined')}</th><th></th></tr></thead>
           <tbody>{rows.map((r, i) => (
             <tr key={r.id}><td>{i + 1}</td>
               <td className="left"><span className="who"><Ava u={r} /> <b>{r.full_name}</b></span></td>
               <td className="left hide-sm">{r.email}</td>
               <td className="left hide-sm">{r.phone || <NP />}</td>
               <td className="left"><span className={'spill ' + (r.is_active === false ? 'absent' : 'present')}>{r.is_active === false ? t('inactive') : t('active')}</span></td>
-              <td className="left hide-sm">{fmtDate(r.created_at)}</td></tr>
+              <td className="left hide-sm">{fmtDate(r.created_at)}</td>
+              <td className="left"><button type="button" className="dbtn danger" onClick={() => setDelDlg({ id: r.id, name: r.full_name })} aria-label={t('delTeacherTitle')} title={t('delTeacherTitle')}><Icon name="trash" size={15} /></button></td></tr>
           ))}</tbody></table></div>
+      )}
+      {delDlg && (
+        <Modal title={<span className="ico-inline"><Icon name="trash" size={18} /> {t('delTeacherTitle')}: {delDlg.name}</span>} onClose={() => setDelDlg(null)}>
+          <p>{t('deleteTeacherExplain')}</p>
+          <span className="acts"><button className="dbtn danger" disabled={busy} onClick={removeTeacher}>{t('deleteAccount')}</button><button className="dbtn ghost" onClick={() => setDelDlg(null)}>{t('cancel')}</button></span>
+        </Modal>
       )}
     </div>
   );

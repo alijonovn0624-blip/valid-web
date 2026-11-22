@@ -7,7 +7,7 @@ import {
   MessageCircle, X, ArrowLeft, ArrowRight, ChevronLeft, ChevronRight, Mail, Trash2, Pencil, Archive, ArchiveRestore,
   Star, Clock, CircleCheck, CircleAlert, TriangleAlert, Medal, MapPin, Play, Heart, Flame, Plus, CircleDashed,
   UserRoundSearch, ChartLine, Undo2, MonitorSmartphone, Circle, Hand, CalendarClock, Info, ChevronDown, ChevronUp, Table, Thermometer, NotebookPen, Paperclip, Volume2, Crown, Search, KeyRound, Bookmark, Lock, Mic, SendHorizontal, FileText, Image, Link,
-  Gamepad2, Zap, Shuffle, Target, Flag, GraduationCap as Cap
+  Gamepad2, Zap, Shuffle, Target, Flag, Palette, Droplet, Leaf, GraduationCap as Cap
 } from 'lucide-react';
 
 const MAP = {
@@ -21,7 +21,7 @@ const MAP = {
   trash: Trash2, edit: Pencil, archive: Archive, restore: ArchiveRestore, star: Star, clock: Clock, ok: CircleCheck,
   alert: CircleAlert, warn: TriangleAlert, medal: Medal, pin: MapPin, play: Play, heart: Heart, flame: Flame, plus: Plus,
   unmarked: CircleDashed, search: UserRoundSearch, trend: ChartLine, undo: Undo2, dash: MonitorSmartphone, dot: Circle,
-  wave: Hand, calendarClock: CalendarClock, info: Info, chart: ChartColumn, calendar: CalendarDays, clip: Paperclip, volume: Volume2, crown: Crown, find: Search, key: KeyRound, lock: Lock, gamepad: Gamepad2, zap: Zap, shuffle: Shuffle, target: Target, flag: Flag, cap: Cap, bookmark: Bookmark, mic: Mic, send: SendHorizontal, file: FileText, image: Image, link: Link, illness: Thermometer, note: NotebookPen, chevD: ChevronDown, chevU: ChevronUp, table: Table,
+  wave: Hand, calendarClock: CalendarClock, info: Info, chart: ChartColumn, calendar: CalendarDays, clip: Paperclip, volume: Volume2, crown: Crown, find: Search, key: KeyRound, lock: Lock, palette: Palette, droplet: Droplet, leaf: Leaf, gamepad: Gamepad2, zap: Zap, shuffle: Shuffle, target: Target, flag: Flag, cap: Cap, bookmark: Bookmark, mic: Mic, send: SendHorizontal, file: FileText, image: Image, link: Link, illness: Thermometer, note: NotebookPen, chevD: ChevronDown, chevU: ChevronUp, table: Table,
 };
 
 // Central registry of the local 3D icon files in public/assets/icons/. A missing file silently falls back to the Lucide outline icon.
