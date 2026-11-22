@@ -469,6 +469,7 @@ export default function Dashboard({ user, StoryForm, EventForm, Feed, StudentHom
 
       <main className={'dmain hasbnav'} ref={mainRef}>
         <header className="dhead">
+          {!isStudent && <button type="button" className="dburger" onClick={() => setSide(true)} aria-label={t('more')}><Icon name="menu" size={22} /></button>}
           {isStudent && page === 'home'
             ? <div className="dtitle"><h1>{greeting()}, <span className="hl">{user.full_name.split(' ')[0]}</span>! <Icon name="wave" size={26} className="wavei" /></h1><p>{t('keepLearning')}</p></div>
             : <div className="dtitle"><h1>{t(titleKey)}</h1><p>{t('welcome')}, {user.full_name.split(' ')[0]}!</p></div>}

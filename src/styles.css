@@ -775,7 +775,6 @@ html[data-theme="light"] .sh-game { color:#fff; }
 }
 @media (max-width:860px) {
   .dash.stu .dtitle h1 { white-space:normal; font-size:18px; line-height:1.2; overflow:visible; } .dash.stu .dtitle h1 .wavei { width:20px; height:20px; }
-  .dash.stu .backbtn { display:none; } /* the bottom bar is the way back on phones */
 }
 :is([data-theme="blue"],[data-theme="green"]) .dash.stu .dtitle h1 .hl { color:var(--acc); }
 
@@ -792,3 +791,11 @@ html[data-theme="light"] .sh-game { color:#fff; }
 .mcqcont:disabled { opacity:.5; cursor:default; }
 .ltile .grpn { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:150px; display:block; }
 @media (max-width:420px){ .twbox { width:34px; height:44px; font-size:20px; } .twboxes { gap:6px; } }
+
+/* single story must not stretch the whole row; level name shown in full */
+@media (min-width:641px){ .sh-stories .sh-story { flex:0 0 150px; max-width:150px; } }
+.sh-storiesc .sh-story img, .sh-storiesc .sh-vid { max-height:230px; }
+.ltile .grpn { white-space:normal; overflow:visible; text-overflow:clip; max-width:none; font-size:16px; word-break:break-word; }
+.ltile:has(.grpn) small { white-space:normal; }
+@media (max-width:860px){ .dhead .dburger { flex:none; margin-right:8px; } }
+@media (min-width:861px){ .dburger { display:none !important; } }

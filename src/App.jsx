@@ -521,7 +521,7 @@ export default function App() {
         const u = await api('/api/auth/me');
         setNetErr(false); setUser(u);
         if (u.language) { setLang(u.language); setL(u.language); }
-        if (isTheme(u.theme)) setTheme(u.theme);
+        if (!isTheme(localStorage.getItem('theme')) && isTheme(u.theme)) setTheme(u.theme); // the colour chosen on this device wins after F5
         setReady(true); return;
       } catch (x) {
         if (x.status === 401 || x.status === 403) { localStorage.removeItem('token'); setUser(null); setReady(true); return; }
