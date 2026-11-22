@@ -462,7 +462,9 @@ function VocabFlow({ hw, onBack, onChanged }) {
   const words = hw.words;
   const practice = hw.mine.parts.some((p) => p.part === 'vocab'); // a finished unit: only look at the cue cards again, nothing is asked or paid
   const [phase, setPhase] = useState('cards'); // cards -> review -> test -> results (-> cards of the wrong words -> test ...)
-  const [correct, setCorrect] = useState(new Set(hw.mine.words.filter((x) => x.correct).map((x) => x.word_id)));
+  const [correct, setCorrect] = useState(new Set()); // words answered right in THIS attempt (every visit starts from the beginning)
+  const [mode, setMode] = useState('all'); // all | fix (cue cards of the wrong words only)
+  const [kind, setKind] = useState('first'); // first round | automatic retry of the wrong ones | fix round
   const [cards, setCards] = useState(words);
   const [idx, setIdx] = useState(0);
   const [testList, setTestList] = useState(words);
@@ -474,12 +476,12 @@ function VocabFlow({ hw, onBack, onChanged }) {
   const [saved, setSaved] = useState({});
   const inRef = useRef(null);
   const touch = useRef(null);
-  const inFix = cards.length < words.length;
+  const inFix = mode === 'fix';
   const step = (d) => { const n = idx + d; if (n < 0) return; if (n >= cards.length) { setPhase('review'); return; } setIdx(n); };
   const save = async (w) => { try { const r = await api(`/api/homework/${hw.id}/words/${w.id}/save`, { method: 'POST' }); setSaved((m) => ({ ...m, [w.id]: r.saved })); } catch {} };
   // words the server does not yet count as correct = the "mistakes" list (correct ones never come back)
   const wrongWords = (set = correct) => words.filter((w) => !set.has(w.id));
-  const start = () => { const todo = wrongWords(); setTestList(todo.length ? todo : words); setCur(0); setTyped(''); setFb(null); setErr(''); setPhase('test'); };
+  const start = () => { if (mode === 'fix') { const todo = wrongWords(); setTestList(todo.length ? todo : words); setKind('fix'); } else { setTestList(words); setKind('first'); } setCur(0); setTyped(''); setFb(null); setErr(''); setPhase('test'); };
   const w = testList[cur];
   const c = cards[idx];
   const slots = w ? [...w.word] : [];
@@ -495,9 +497,16 @@ function VocabFlow({ hw, onBack, onChanged }) {
     } catch (x) { setErr(apiError(x)); }
     setBusy(false);
   };
-  const next = () => { setTyped(''); setFb(null); if (cur < testList.length - 1) setCur(cur + 1); else setPhase('results'); };
-  const fix = () => { const todo = wrongWords(); setCards(todo); setIdx(0); setPhase('cards'); };
+  const next = () => {
+    setTyped(''); setFb(null);
+    if (cur < testList.length - 1) { setCur(cur + 1); return; }
+    const wrong = wrongWords();
+    if (kind === 'first' && wrong.length) { setKind('retry'); setTestList(wrong); setCur(0); } // the wrong ones come back once, right after the first round
+    else setPhase('results');
+  };
+  const fix = () => { const todo = wrongWords(); setMode('fix'); setCards(todo); setIdx(0); setPhase('cards'); };
   const finish = async () => {
+    if (practice) { onBack(); return; } // a repeat of a finished unit pays nothing and changes nothing
     setBusy(true); setErr('');
     try { await api(`/api/homework/${hw.id}/words/finish`, { method: 'POST' }); onChanged(); onBack(); }
     catch (x) { setErr(apiError(x)); setBusy(false); }
@@ -533,14 +542,12 @@ function VocabFlow({ hw, onBack, onChanged }) {
       {phase === 'review' && (
         <div className="vend">
           <div className="dnote"><b>{t('hwSeenAll')}</b> ({cards.length})</div>
-          {practice ? (
-            <div className="acts" style={{ justifyContent: 'center' }}><button className="dbtn startbtn" onClick={onBack}>{t('hwFinish')}</button></div>
-          ) : (<>
+          <>
             <div className="acts" style={{ justifyContent: 'center' }}>
               <button className="dbtn ghost" onClick={() => { setIdx(0); setPhase('cards'); }}><Icon name="undo" size={16} /> {t('hwReview')}</button>
               <button className="dbtn startbtn" onClick={start}>{t('hwContinue')} <Icon name="chevR" size={16} /></button>
             </div>
-            <p className="muted small" style={{ textAlign: 'center' }}>{t('hwContinueNote')}</p></>)}
+            <p className="muted small" style={{ textAlign: 'center' }}>{t('hwContinueNote')}</p></>
         </div>
       )}
       {phase === 'test' && w && (
@@ -550,6 +557,7 @@ function VocabFlow({ hw, onBack, onChanged }) {
             <div className="mcqbar"><i style={{ width: Math.round(((cur + (fb ? 1 : 0)) / testList.length) * 100) + '%' }} /></div>
             <span className="mcqpos">{cur + 1}/{testList.length}</span>
           </div>
+          {kind === 'retry' && <p className="dnote" style={{ textAlign: 'center' }}><b>{t('retryRound')}</b></p>}
           <h3 className="mcqtitle">{t('typeEnglish')}</h3>
           <div className="mcqcard tw">
             <div className="twprompt"><b>{tr(w, 'uz')}</b><b className="ru">{tr(w, 'ru')}</b></div>

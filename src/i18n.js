@@ -527,6 +527,7 @@ const D = {
   keepLearning: ["Keep learning, you're doing great!", "O'qishda davom eting, juda yaxshi ketyapsiz!", 'Продолжайте учиться, у вас отлично получается!'],
   yourProgress: ['My Progress', 'Mening natijam', 'Мой прогресс'],
   hwGroupRank: ['Group ranking', "Guruhdagi o'rin", 'Место в группе', 'Grup sırası', '小组排名'],
+  retryRound: ['Try the wrong words once more', "Xato so'zlarni yana bir marta urinib ko'ring", 'Попробуйте неверные слова ещё раз', 'Yanlış kelimeleri bir kez daha deneyin', '再试一次错误的单词'],
   fixMistakes: ['Fix Mistakes', "Xatolarni tuzatish", 'Исправить ошибки', 'Hataları düzelt', '纠正错误'],
   wrongAnswer: ['Not correct', "Noto'g'ri", 'Неверно', 'Yanlış', '不正确'],
   rightWas: ['Correct answer', "To'g'ri javob", 'Правильный ответ', 'Doğru cevap', '正确答案'],
