@@ -527,6 +527,8 @@ const D = {
   keepLearning: ["Keep learning, you're doing great!", "O'qishda davom eting, juda yaxshi ketyapsiz!", 'Продолжайте учиться, у вас отлично получается!'],
   yourProgress: ['My Progress', 'Mening natijam', 'Мой прогресс'],
   hwGroupRank: ['Group ranking', "Guruhdagi o'rin", 'Место в группе', 'Grup sırası', '小组排名'],
+  typeEnglish: ['Type the English word', "Inglizcha so'zni yozing", 'Напишите слово по-английски', 'İngilizce kelimeyi yazın', '输入英文单词'],
+  hwLevel: ['Level', 'Daraja', 'Уровень', 'Seviye', '等级'],
   hwOverallRank: ['Overall ranking', "Umumiy o'rin", 'Общий рейтинг', 'Genel sıra', '总排名'],
   themeLabel: ['Choose theme', 'Mavzuni tanlang', 'Выберите тему', 'Tema seç', '选择主题'],
   themeBlue: ['Lazuli', 'Lojuvard', 'Лазурит', 'Lacivert', '青金石'],

@@ -296,6 +296,7 @@ export function HomeworkMatrix({ groups, gid: gidProp = '', isAdmin, onOpen }) {
 /* =====================  Student  ===================== */
 const Back = ({ onClick }) => <button type="button" className="dbtn ghost backbtn" onClick={onClick}><Icon name="back" size={16} /> {t('back')}</button>;
 const curLang = () => localStorage.getItem('lang') || 'uz';
+const otherTrans = (w) => { const m = (w.translations) || {}; const cur = curLang(); const o = ['uz', 'ru'].filter((k) => k !== (m[cur] ? cur : 'uz') && m[k]).map((k) => m[k]); return o[0] || ''; };
 const trans = (w) => (w.translations && (w.translations[curLang()] || w.translations.uz || w.translations.ru)) || w.translation;
 const RewardBanner = ({ r }) => (r ? <div className="rewardbar"><Icon name="coins" size={18} /> {t('hwEarned')} <b>+{r.coins}</b> {t('coins')}{r.points ? <> · <Icon name="star" size={16} /> <b>+{r.points}</b> {t('points')}</> : null}</div> : null);
 
@@ -459,13 +460,15 @@ function Highlight({ text, word }) {
 function VocabFlow({ hw, onBack, onChanged }) {
   const words = hw.words;
   const done0 = new Set(hw.mine.words.filter((x) => x.correct).map((x) => x.word_id));
-  const [phase, setPhase] = useState(done0.size === words.length && words.length ? 'done' : 'cards');
+  const practice = done0.size === words.length && words.length > 0; // a finished unit: only look at the cue cards again, nothing is asked or paid
+  const [phase, setPhase] = useState('cards');
   const [idx, setIdx] = useState(0);
   const [correct, setCorrect] = useState(done0);
   const [list, setList] = useState(words);
   const [testList, setTestList] = useState(words);
   const [cur, setCur] = useState(0);
-  const [pick, setPick] = useState(null);
+  const [typed, setTyped] = useState('');
+  const inRef = useRef(null);
   const [fb, setFb] = useState(null);
   const [busy, setBusy] = useState(false);
   const [reward, setReward] = useState(null);
@@ -473,20 +476,23 @@ function VocabFlow({ hw, onBack, onChanged }) {
   const touch = useRef(null);
   const step = (d) => { const n = idx + d; if (n < 0) return; if (n >= list.length) { setPhase('review'); return; } setIdx(n); };
   const save = async (w) => { try { const r = await api(`/api/homework/${hw.id}/words/${w.id}/save`, { method: 'POST' }); setList((l) => l.map((x) => (x.id === w.id ? { ...x, saved: r.saved } : x))); } catch {} };
-  const start = () => { const todo = words.filter((w) => !correct.has(w.id)); setTestList(todo.length ? todo : words); setCur(0); setPick(null); setFb(null); setPhase('test'); };
+  const start = () => { const todo = words.filter((w) => !correct.has(w.id)); setTestList(todo.length ? todo : words); setCur(0); setTyped(''); setFb(null); setPhase('test'); };
   const w = testList[cur];
   const c = list[idx];
-  const opts = useMemo(() => (w ? buildOptions(w, words) : []), [w && w.id, phase]);
-  // tapping an answer checks it on the server at once (the server knows the right meaning; a repeat of a finished word pays nothing)
-  const choose = async (o) => {
-    if (busy || fb === 'ok' || !w) return; setBusy(true); setErr(''); setPick(o);
+  const slots = w ? [...w.word] : [];
+  const need = slots.filter((ch) => ch !== ' ').length;
+  const given = () => { let k = 0; return slots.map((ch) => (ch === ' ' ? ' ' : typed[k++] || '')).join(''); };
+  useEffect(() => { if (phase === 'test' && !fb && inRef.current) inRef.current.focus(); }, [phase, cur, fb]);
+  // the student types the English word; the server checks it (a repeat of a finished word pays nothing)
+  const choose = async () => {
+    if (busy || fb === 'ok' || !w || typed.length < need) return; setBusy(true); setErr('');
     try {
-      const r = await api(`/api/homework/${hw.id}/words/${w.id}/check`, { method: 'POST', body: { choice: o } });
+      const r = await api(`/api/homework/${hw.id}/words/${w.id}/check`, { method: 'POST', body: { answer: given() } });
       if (r.correct) { setFb('ok'); setCorrect((x) => new Set([...x, w.id])); if (r.reward) setReward(r.reward); onChanged(); } else setFb('bad');
-    } catch (x) { setErr(apiError(x)); setPick(null); }
+    } catch (x) { setErr(apiError(x)); }
     setBusy(false);
   };
-  const next = () => { setPick(null); setFb(null); if (cur < testList.length - 1) setCur(cur + 1); else setPhase('done'); };
+  const next = () => { setTyped(''); setFb(null); if (cur < testList.length - 1) setCur(cur + 1); else setPhase('done'); };
   return (
     <div className="dcard">
       <div className="hwtop"><Back onClick={onBack} /><h3 className="hwtitle">{t('hwPartVocab')}</h3></div>
@@ -514,11 +520,14 @@ function VocabFlow({ hw, onBack, onChanged }) {
       {phase === 'review' && (
         <div className="vend">
           <div className="dnote"><b>{t('hwSeenAll')}</b> ({list.length})</div>
-          <div className="acts" style={{ justifyContent: 'center' }}>
-            <button className="dbtn ghost" onClick={() => { setIdx(0); setPhase('cards'); }}><Icon name="undo" size={16} /> {t('hwReview')}</button>
-            <button className="dbtn startbtn" onClick={start}>{t('hwContinue')} <Icon name="chevR" size={16} /></button>
-          </div>
-          <p className="muted small" style={{ textAlign: 'center' }}>{t('hwContinueNote')}</p>
+          {practice ? (
+            <div className="acts" style={{ justifyContent: 'center' }}><button className="dbtn startbtn" onClick={onBack}>{t('hwFinish')}</button></div>
+          ) : (<>
+            <div className="acts" style={{ justifyContent: 'center' }}>
+              <button className="dbtn ghost" onClick={() => { setIdx(0); setPhase('cards'); }}><Icon name="undo" size={16} /> {t('hwReview')}</button>
+              <button className="dbtn startbtn" onClick={start}>{t('hwContinue')} <Icon name="chevR" size={16} /></button>
+            </div>
+            <p className="muted small" style={{ textAlign: 'center' }}>{t('hwContinueNote')}</p></>)}
         </div>
       )}
       {phase === 'test' && w && (
@@ -527,32 +536,27 @@ function VocabFlow({ hw, onBack, onChanged }) {
             <button type="button" className="mcqx" onClick={onBack} aria-label={t('close')}><Icon name="close" size={22} /></button>
             <div className="mcqbar"><i style={{ width: Math.round(((cur + (fb === 'ok' ? 1 : 0)) / testList.length) * 100) + '%' }} /></div>
           </div>
-          <h3 className="mcqtitle">{t('pickMeaning')}</h3>
-          <div className="mcqcard">
-            <div className="mcqword"><b>{w.word}</b><button type="button" className="mcqspeak" onClick={() => speak(w.word)} aria-label={t('hwPronounce')}><Icon name="volume" size={18} /></button></div>
-            {(w.definition || w.example) && <hr />}
-            {w.definition && <p className="mcqdef">{w.definition}</p>}
-            {w.example && <p className="mcqex"><Highlight text={w.example} word={w.word} /></p>}
+          <h3 className="mcqtitle">{t('typeEnglish')}</h3>
+          <div className="mcqcard tw">
+            <div className="twprompt"><b>{trans(w)}</b>{otherTrans(w) && <small>{otherTrans(w)}</small>}</div>
           </div>
-          <p className="mcqq">{t('whatMeans')}</p>
-          <div className="mcqopts">
-            {opts.map((o, k) => {
-              const on = pick === o; const st = on ? (fb === 'ok' ? ' good' : fb === 'bad' ? ' wrong' : ' on') : '';
-              return <button key={o} type="button" className={'mcqopt' + st} disabled={busy || fb === 'ok'} onClick={() => choose(o)}>
-                <b>{LETTER(k)}.</b><span>{o}</span><i className="mcqradio">{on && fb === 'ok' && <Icon name="check" size={14} strokeWidth={3} />}{on && fb === 'bad' && <Icon name="close" size={14} strokeWidth={3} />}</i></button>;
-            })}
+          <div className={'twboxes' + (fb === 'ok' ? ' good' : fb === 'bad' ? ' wrong' : '')} onClick={() => inRef.current && inRef.current.focus()}>
+            {(() => { let k = 0; return slots.map((ch, j) => ch === ' ' ? <span key={j} className="twgap" /> : (() => { const at = k++; return <span key={j} className={'twbox' + (typed[at] ? ' has' : '') + (!fb && at === Math.min(typed.length, need - 1) ? ' cur' : '')}>{typed[at] || ''}</span>; })()); })()}
+            <input ref={inRef} className="twinput" value={typed} maxLength={need} autoCapitalize="off" autoCorrect="off" autoComplete="off" spellCheck={false} disabled={busy || fb === 'ok'} aria-label={t('typeEnglish')}
+              onChange={(e) => { setFb(null); setTyped(e.target.value.replace(/\s/g, '').slice(0, need)); }} onKeyDown={(e) => { if (e.key === 'Enter') choose(); }} />
           </div>
+          {!fb && <button type="button" className="mcqcont" disabled={busy || typed.length < need} onClick={choose}>{t('checkBtn')}</button>}
           {err && <div className="err">{err}</div>}
           {fb && (
             <div className={'mcqsheet ' + fb}>
               <div className="mcqverdict"><span className="mcqmark">{fb === 'ok' ? <Icon name="check" size={22} strokeWidth={3} /> : <Icon name="close" size={22} strokeWidth={3} />}</span><b>{fb === 'ok' ? t('correctExcl') : t('wrongTry')}</b></div>
               <RewardBanner r={fb === 'ok' ? reward : null} />
-              {fb === 'ok' ? <button type="button" className="mcqcont" onClick={next}>{t('continueBtn')}</button> : <button type="button" className="mcqcont ghost" onClick={() => { setFb(null); setPick(null); }}>{t('retry')}</button>}
+              {fb === 'ok' ? <button type="button" className="mcqcont" onClick={next}>{cur >= testList.length - 1 ? t('hwFinish') : t('continueBtn')}</button> : <button type="button" className="mcqcont ghost" onClick={() => { setFb(null); setTyped(''); }}>{t('retry')}</button>}
             </div>
           )}
         </div>
       )}
-      {phase === 'done' && <><div className="dnote"><b>{t('hwTestDone')}</b></div><RewardBanner r={reward} /><div className="acts"><button className="dbtn ghost" onClick={() => { setIdx(0); setPhase('cards'); }}>{t('hwReview')}</button><button className="dbtn" onClick={onBack}>{t('hwFinish')}</button></div></>}
+      {phase === 'done' && <><div className="dnote"><b>{t('hwTestDone')}</b></div><RewardBanner r={reward} /><div className="acts"><button className="dbtn" onClick={onBack}>{t('hwFinish')}</button></div></>}
     </div>
   );
 }
@@ -685,6 +689,7 @@ export function StudentHomework({ me, onDeep }) {
   const [sel, setSel] = useState(null);
   const [info, setInfo] = useState(null);
   const [rk, setRk] = useState({});
+  const [grpName, setGrpName] = useState('');
   const rail = useRef(null);
   const lastReload = useRef(0);
   const clock = useClock(serverNow);
@@ -692,7 +697,7 @@ export function StudentHomework({ me, onDeep }) {
   const load = () => Promise.all([api('/api/homework'), api('/api/homework/lock-status').catch(() => null)]) // an older server without lock-status must not hide the units
     .then(([l, s]) => { setList(l); setSt(s); setServerNow(s && s.server_now); setErr(''); lastReload.current = Date.now(); })
     .catch((x) => setErr(apiError(x)));
-  useEffect(() => { load(); api('/api/points/ranking').then(setRk).catch(() => {}); api('/api/community/groups').then((g) => setNoGroup(g.length === 0)).catch(() => {}); const id = setInterval(load, 60000); return () => clearInterval(id); }, []);
+  useEffect(() => { load(); api('/api/points/ranking').then(setRk).catch(() => {}); api('/api/community/groups').then((g) => { setNoGroup(g.length === 0); setGrpName(g[0] ? g[0].name : ''); }).catch(() => {}); const id = setInterval(load, 60000); return () => clearInterval(id); }, []);
   useEffect(() => { onDeep && onDeep(open !== null); }, [open]);
 
   const course = useMemo(() => buildCourse(list), [list]);
@@ -727,10 +732,10 @@ export function StudentHomework({ me, onDeep }) {
   };
   if (open) return <Unit id={open} onBack={() => { setOpen(null); load(); }} onListChanged={load} />;
 
-  // yellow ring round the avatar = progress of the unit that is on screen (3 lessons); on the Final Exam card it is the whole course
+  // yellow ring round the avatar = progress of the whole level (12 units x 3 lessons), it fills slowly
   const pctOf = (it) => { if (it.kind !== 'hw') return 0; const x = unitState(it, nowMs); return x.state === 'open' ? x.pct : 0; };
   const selGroup = course.find((g) => g.items.some((x) => x.i === sel));
-  const ringItems = selGroup && selGroup.k !== 'final' ? selGroup.items : flat.filter((x) => x.kind !== 'exam');
+  const ringItems = flat.filter((x) => x.kind !== 'exam'); // the whole level (12 units): the ring is full when the level is finished
   const ringPct = ringItems.length ? Math.round(ringItems.reduce((a, x) => a + pctOf(x), 0) / ringItems.length) : 0;
   const clickCard = (it) => {
     if (it.i !== sel) { setSel(it.i); centre(it.i); return; }
@@ -765,7 +770,7 @@ export function StudentHomework({ me, onDeep }) {
           <div className="ltile"><Icon name="trophy" size={26} className="lt-g" /><span><b>{rk.group_rank ? '#' + rk.group_rank : '–'}</b><small>{t('hwGroupRank')}</small></span></div>
           <div className="ltile"><Icon name="trophy" size={26} className="lt-b" /><span><b>{rk.global_rank ? '#' + rk.global_rank : '–'}</b><small>{t('hwOverallRank')}</small></span></div>
           <div className="ltile"><Icon name="star" size={26} fill="currentColor" className="lt-y" /><span><b>{me ? me.points : 0}</b><small>{t('points')}</small></span></div>
-          <div className="ltile"><Icon name="coins" size={26} className="lt-o" /><span><b>{me ? me.coins : 0}</b><small>{t('coins')}</small></span></div>
+          <div className="ltile"><Icon name="users" size={26} className="lt-o" /><span><b className="grpn">{grpName || '–'}</b><small>{t('hwLevel')}</small></span></div>
         </div>
       </div>
       {err && <div className="err">{err}</div>}

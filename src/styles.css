@@ -778,3 +778,17 @@ html[data-theme="light"] .sh-game { color:#fff; }
   .dash.stu .backbtn { display:none; } /* the bottom bar is the way back on phones */
 }
 :is([data-theme="blue"],[data-theme="green"]) .dash.stu .dtitle h1 .hl { color:var(--acc); }
+
+/* vocabulary typing exercise: one box per letter */
+.mcqcard.tw { text-align:center; } .twprompt { display:flex; flex-direction:column; gap:4px; align-items:center; }
+.twprompt b { font-size:26px; } .twprompt small { color:var(--muted,#9aa3c7); font-size:15px; }
+.twboxes { position:relative; display:flex; flex-wrap:wrap; justify-content:center; gap:8px; margin:18px 0 6px; cursor:text; }
+.twbox { width:44px; height:52px; display:grid; place-items:center; font-size:24px; font-weight:700; border-radius:12px; border:2px solid #3a3f52; background:#2a2d37; color:inherit; text-transform:lowercase; }
+.twbox.cur { border-color:#6c7bff; box-shadow:0 0 0 3px #6c7bff33; }
+.twgap { width:18px; }
+.twboxes.good .twbox { border-color:#2fbf85; background:#1f3a35; box-shadow:0 0 14px #2fbf8544; }
+.twboxes.wrong .twbox { border-color:#ff5a5f; background:#3b2428; box-shadow:0 0 14px #ff5a5f44; }
+.twinput { position:absolute; inset:0; width:100%; height:100%; opacity:0; border:0; cursor:text; font-size:16px; }
+.mcqcont:disabled { opacity:.5; cursor:default; }
+.ltile .grpn { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:150px; display:block; }
+@media (max-width:420px){ .twbox { width:34px; height:44px; font-size:20px; } .twboxes { gap:6px; } }
