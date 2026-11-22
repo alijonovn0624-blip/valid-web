@@ -801,3 +801,13 @@ html[data-theme="light"] .sh-game { color:#fff; }
 @media (min-width:861px){ .dburger { display:none !important; } }
 
 .gbtn.speak.accent { width:auto; padding:0 12px; gap:6px; display:inline-flex; align-items:center; border-radius:999px; } .gbtn.speak.accent small { font-weight:700; font-size:12px; } .vwordrow { flex-wrap:wrap; justify-content:center; gap:8px; }
+
+/* vocabulary: results, language tags, position */
+.vstats { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; max-width:420px; margin:14px auto; }
+.vstats > div { background:var(--card,#1c2238); border:1px solid #ffffff14; border-radius:14px; padding:12px 8px; text-align:center; display:flex; flex-direction:column; gap:2px; }
+.vstats b { font-size:26px; } .vstats small { color:var(--muted,#9aa3c7); } .vstats .ok b { color:#2fbf85; } .vstats .bad b { color:#ff5a5f; }
+.vtr .vlang { display:inline-block; font-size:10px; font-weight:800; padding:2px 6px; border-radius:6px; background:#ffffff1c; margin-right:6px; vertical-align:middle; }
+.mcqpos { font-size:13px; color:var(--muted,#9aa3c7); font-weight:700; min-width:44px; text-align:right; }
+.twprompt b.ru { font-size:20px; opacity:.85; } .twright { margin:4px 0 10px; }
+.twinput:disabled { cursor:default; }
+.mcq .mcqsheet { position:static; transform:none; margin:16px auto 0; max-width:520px; width:100%; }

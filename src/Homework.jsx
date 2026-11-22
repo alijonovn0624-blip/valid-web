@@ -296,6 +296,7 @@ export function HomeworkMatrix({ groups, gid: gidProp = '', isAdmin, onOpen }) {
 /* =====================  Student  ===================== */
 const Back = ({ onClick }) => <button type="button" className="dbtn ghost backbtn" onClick={onClick}><Icon name="back" size={16} /> {t('back')}</button>;
 const curLang = () => localStorage.getItem('lang') || 'uz';
+const tr = (w, k) => (w.translations && w.translations[k]) || (k === 'uz' ? w.translation : '') || '';
 const otherTrans = (w) => { const m = (w.translations) || {}; const cur = curLang(); const o = ['uz', 'ru'].filter((k) => k !== (m[cur] ? cur : 'uz') && m[k]).map((k) => m[k]); return o[0] || ''; };
 const trans = (w) => (w.translations && (w.translations[curLang()] || w.translations.uz || w.translations.ru)) || w.translation;
 const RewardBanner = ({ r }) => (r ? <div className="rewardbar"><Icon name="coins" size={18} /> {t('hwEarned')} <b>+{r.coins}</b> {t('coins')}{r.points ? <> · <Icon name="star" size={16} /> <b>+{r.points}</b> {t('points')}</> : null}</div> : null);
@@ -459,67 +460,79 @@ function Highlight({ text, word }) {
 
 function VocabFlow({ hw, onBack, onChanged }) {
   const words = hw.words;
-  const done0 = new Set(hw.mine.words.filter((x) => x.correct).map((x) => x.word_id));
-  const practice = done0.size === words.length && words.length > 0; // a finished unit: only look at the cue cards again, nothing is asked or paid
-  const [phase, setPhase] = useState('cards');
+  const practice = hw.mine.parts.some((p) => p.part === 'vocab'); // a finished unit: only look at the cue cards again, nothing is asked or paid
+  const [phase, setPhase] = useState('cards'); // cards -> review -> test -> results (-> cards of the wrong words -> test ...)
+  const [correct, setCorrect] = useState(new Set(hw.mine.words.filter((x) => x.correct).map((x) => x.word_id)));
+  const [cards, setCards] = useState(words);
   const [idx, setIdx] = useState(0);
-  const [correct, setCorrect] = useState(done0);
-  const [list, setList] = useState(words);
   const [testList, setTestList] = useState(words);
   const [cur, setCur] = useState(0);
   const [typed, setTyped] = useState('');
-  const inRef = useRef(null);
-  const [fb, setFb] = useState(null);
+  const [fb, setFb] = useState(null); // null | 'ok' | 'bad'
   const [busy, setBusy] = useState(false);
-  const [reward, setReward] = useState(null);
   const [err, setErr] = useState('');
+  const [saved, setSaved] = useState({});
+  const inRef = useRef(null);
   const touch = useRef(null);
-  const step = (d) => { const n = idx + d; if (n < 0) return; if (n >= list.length) { setPhase('review'); return; } setIdx(n); };
-  const save = async (w) => { try { const r = await api(`/api/homework/${hw.id}/words/${w.id}/save`, { method: 'POST' }); setList((l) => l.map((x) => (x.id === w.id ? { ...x, saved: r.saved } : x))); } catch {} };
-  const start = () => { const todo = words.filter((w) => !correct.has(w.id)); setTestList(todo.length ? todo : words); setCur(0); setTyped(''); setFb(null); setPhase('test'); };
+  const inFix = cards.length < words.length;
+  const step = (d) => { const n = idx + d; if (n < 0) return; if (n >= cards.length) { setPhase('review'); return; } setIdx(n); };
+  const save = async (w) => { try { const r = await api(`/api/homework/${hw.id}/words/${w.id}/save`, { method: 'POST' }); setSaved((m) => ({ ...m, [w.id]: r.saved })); } catch {} };
+  // words the server does not yet count as correct = the "mistakes" list (correct ones never come back)
+  const wrongWords = (set = correct) => words.filter((w) => !set.has(w.id));
+  const start = () => { const todo = wrongWords(); setTestList(todo.length ? todo : words); setCur(0); setTyped(''); setFb(null); setErr(''); setPhase('test'); };
   const w = testList[cur];
-  const c = list[idx];
+  const c = cards[idx];
   const slots = w ? [...w.word] : [];
   const need = slots.filter((ch) => ch !== ' ').length;
-  const given = () => { let k = 0; return slots.map((ch) => (ch === ' ' ? ' ' : typed[k++] || '')).join(''); };
+  const givenOf = (val) => { let k = 0; return slots.map((ch) => (ch === ' ' ? ' ' : val[k++] || '')).join(''); };
   useEffect(() => { if (phase === 'test' && !fb && inRef.current) inRef.current.focus(); }, [phase, cur, fb]);
-  // the student types the English word; the server checks it (a repeat of a finished word pays nothing)
-  const choose = async () => {
-    if (busy || fb === 'ok' || !w || typed.length < need) return; setBusy(true); setErr('');
+  // the answer is checked by the server as soon as the last letter is typed (no Check button)
+  const check = async (val) => {
+    if (busy || fb || !w || val.length < need) return; setBusy(true); setErr('');
     try {
-      const r = await api(`/api/homework/${hw.id}/words/${w.id}/check`, { method: 'POST', body: { answer: given() } });
-      if (r.correct) { setFb('ok'); setCorrect((x) => new Set([...x, w.id])); if (r.reward) setReward(r.reward); onChanged(); } else setFb('bad');
+      const r = await api(`/api/homework/${hw.id}/words/${w.id}/check`, { method: 'POST', body: { answer: givenOf(val) } });
+      if (r.correct) { setFb('ok'); setCorrect((x) => new Set([...x, w.id])); onChanged(); } else setFb('bad');
     } catch (x) { setErr(apiError(x)); }
     setBusy(false);
   };
-  const next = () => { setTyped(''); setFb(null); if (cur < testList.length - 1) setCur(cur + 1); else setPhase('done'); };
+  const next = () => { setTyped(''); setFb(null); if (cur < testList.length - 1) setCur(cur + 1); else setPhase('results'); };
+  const fix = () => { const todo = wrongWords(); setCards(todo); setIdx(0); setPhase('cards'); };
+  const finish = async () => {
+    setBusy(true); setErr('');
+    try { await api(`/api/homework/${hw.id}/words/finish`, { method: 'POST' }); onChanged(); onBack(); }
+    catch (x) { setErr(apiError(x)); setBusy(false); }
+  };
+  const nCorrect = words.filter((x) => correct.has(x.id)).length;
   return (
     <div className="dcard">
       <div className="hwtop"><Back onClick={onBack} /><h3 className="hwtitle">{t('hwPartVocab')}</h3></div>
       {phase === 'cards' && c && (
         <div className="vstep" onTouchStart={(e) => { touch.current = e.touches[0].clientX; }} onTouchEnd={(e) => { if (touch.current === null) return; const dx = e.changedTouches[0].clientX - touch.current; touch.current = null; if (Math.abs(dx) > 50) step(dx < 0 ? 1 : -1); }}>
-          <p className="muted small">{t('hwStepHint')} · {idx + 1}/{list.length}</p>
-          <div className="vdots">{list.map((x, k) => <i key={x.id} className={k === idx ? 'on' : k < idx ? 'seen' : ''} />)}</div>
+          <p className="muted small">{inFix && <b>{t('fixMistakes')} · </b>}{idx + 1}/{cards.length}</p>
+          <div className="vdots">{cards.map((x, k) => <i key={x.id} className={k === idx ? 'on' : k < idx ? 'seen' : ''} />)}</div>
           <div className="vcard big">
             <div className="vblob">{c.image_url ? <img src={media(c.image_url)} alt="" /> : <img className="vart" src={artFor(c.word)} alt="" />}
             {c.image_provider === 'icons8' && c.image_attribution_url && <a className="vcredit" href={c.image_attribution_url} target="_blank" rel="noopener noreferrer">Icons8</a>}</div>
-            <div className="vwordrow"><b className="vword">{c.word}</b><button type="button" className="gbtn speak accent" onClick={() => speak(c.word, 'en-US')} aria-label="US"><Icon name="volume" size={22} /><small>US</small></button><button type="button" className="gbtn speak accent" onClick={() => speak(c.word, 'en-GB')} aria-label="British"><Icon name="volume" size={22} /><small>UK</small></button></div>
+            <div className="vwordrow"><b className="vword">{c.word}</b>
+              <button type="button" className="gbtn speak accent" onClick={() => speak(c.word, 'en-US')} aria-label="US"><Icon name="volume" size={22} /><small>US</small></button>
+              <button type="button" className="gbtn speak accent" onClick={() => speak(c.word, 'en-GB')} aria-label="British"><Icon name="volume" size={22} /><small>UK</small></button></div>
             {c.phonetic && <span className="vphon">{c.phonetic}</span>}
-            <span className="vtr">{trans(c)}</span>
+            <span className="vtr"><small className="vlang">UZ</small> {tr(c, 'uz')}</span>
+            <span className="vtr"><small className="vlang">RU</small> {tr(c, 'ru')}</span>
             {c.definition && <span className="vdef">{c.definition}</span>}
             {c.example && <span className="vex">“{c.example}”</span>}
             {c.image_credit && <small className="vcredit">{t('hwPhotoCredit')}: {c.image_credit}</small>}
-            <button type="button" className="gbtn vsave" onClick={() => save(c)} aria-label={t('hwSaved')}><Icon name="bookmark" size={20} fill={c.saved ? 'currentColor' : 'none'} /></button>
+            <button type="button" className="gbtn vsave" onClick={() => save(c)} aria-label={t('hwSaved')}><Icon name="bookmark" size={20} fill={(saved[c.id] !== undefined ? saved[c.id] : c.saved) ? 'currentColor' : 'none'} /></button>
           </div>
           <div className="acts" style={{ justifyContent: 'center' }}>
-            <button className="dbtn ghost" disabled={idx === 0} onClick={() => step(-1)} aria-label={t('hwPrev')}><Icon name="prev" size={18} /></button>
-            <button className="dbtn" onClick={() => step(1)}>{idx === list.length - 1 ? t('hwFinishCards') : t('hwNext')} <Icon name="chevR" size={16} /></button>
+            <button className="dbtn ghost" disabled={idx === 0} onClick={() => step(-1)}><Icon name="prev" size={18} /> {t('back')}</button>
+            <button className="dbtn" onClick={() => step(1)}>{t('continueBtn')} <Icon name="chevR" size={16} /></button>
           </div>
         </div>
       )}
       {phase === 'review' && (
         <div className="vend">
-          <div className="dnote"><b>{t('hwSeenAll')}</b> ({list.length})</div>
+          <div className="dnote"><b>{t('hwSeenAll')}</b> ({cards.length})</div>
           {practice ? (
             <div className="acts" style={{ justifyContent: 'center' }}><button className="dbtn startbtn" onClick={onBack}>{t('hwFinish')}</button></div>
           ) : (<>
@@ -534,29 +547,43 @@ function VocabFlow({ hw, onBack, onChanged }) {
         <div className="mcq">
           <div className="mcqtop">
             <button type="button" className="mcqx" onClick={onBack} aria-label={t('close')}><Icon name="close" size={22} /></button>
-            <div className="mcqbar"><i style={{ width: Math.round(((cur + (fb === 'ok' ? 1 : 0)) / testList.length) * 100) + '%' }} /></div>
+            <div className="mcqbar"><i style={{ width: Math.round(((cur + (fb ? 1 : 0)) / testList.length) * 100) + '%' }} /></div>
+            <span className="mcqpos">{cur + 1}/{testList.length}</span>
           </div>
           <h3 className="mcqtitle">{t('typeEnglish')}</h3>
           <div className="mcqcard tw">
-            <div className="twprompt"><b>{trans(w)}</b>{otherTrans(w) && <small>{otherTrans(w)}</small>}</div>
+            <div className="twprompt"><b>{tr(w, 'uz')}</b><b className="ru">{tr(w, 'ru')}</b></div>
           </div>
           <div className={'twboxes' + (fb === 'ok' ? ' good' : fb === 'bad' ? ' wrong' : '')} onClick={() => inRef.current && inRef.current.focus()}>
             {(() => { let k = 0; return slots.map((ch, j) => ch === ' ' ? <span key={j} className="twgap" /> : (() => { const at = k++; return <span key={j} className={'twbox' + (typed[at] ? ' has' : '') + (!fb && at === Math.min(typed.length, need - 1) ? ' cur' : '')}>{typed[at] || ''}</span>; })()); })()}
-            <input ref={inRef} className="twinput" value={typed} maxLength={need} autoCapitalize="off" autoCorrect="off" autoComplete="off" spellCheck={false} disabled={busy || fb === 'ok'} aria-label={t('typeEnglish')}
-              onChange={(e) => { setFb(null); setTyped(e.target.value.replace(/\s/g, '').slice(0, need)); }} onKeyDown={(e) => { if (e.key === 'Enter') choose(); }} />
+            <input ref={inRef} className="twinput" value={typed} maxLength={need} autoCapitalize="off" autoCorrect="off" autoComplete="off" spellCheck={false} disabled={busy || !!fb} aria-label={t('typeEnglish')}
+              onChange={(e) => { const v = e.target.value.replace(/\s/g, '').slice(0, need); setTyped(v); check(v); }} />
           </div>
-          {!fb && <button type="button" className="mcqcont" disabled={busy || typed.length < need} onClick={choose}>{t('checkBtn')}</button>}
-          {err && <div className="err">{err}</div>}
+          {err && <div className="err">{err} <button type="button" className="dbtn ghost" onClick={() => check(typed)}>{t('retry')}</button></div>}
           {fb && (
             <div className={'mcqsheet ' + fb}>
-              <div className="mcqverdict"><span className="mcqmark">{fb === 'ok' ? <Icon name="check" size={22} strokeWidth={3} /> : <Icon name="close" size={22} strokeWidth={3} />}</span><b>{fb === 'ok' ? t('correctExcl') : t('wrongTry')}</b></div>
-              <RewardBanner r={fb === 'ok' ? reward : null} />
-              {fb === 'ok' ? <button type="button" className="mcqcont" onClick={cur >= testList.length - 1 ? onBack : next}>{cur >= testList.length - 1 ? t('hwFinish') : t('continueBtn')}</button> : <button type="button" className="mcqcont ghost" onClick={() => { setFb(null); setTyped(''); }}>{t('retry')}</button>}
+              <div className="mcqverdict"><span className="mcqmark">{fb === 'ok' ? <Icon name="check" size={22} strokeWidth={3} /> : <Icon name="close" size={22} strokeWidth={3} />}</span><b>{fb === 'ok' ? t('correctExcl') : t('wrongAnswer')}</b></div>
+              {fb === 'bad' && <p className="twright">{t('rightWas')}: <b>{w.word}</b></p>}
+              <button type="button" className="mcqcont" onClick={next}>{t('continueBtn')}</button>
             </div>
           )}
         </div>
       )}
-      {phase === 'done' && <><div className="dnote"><b>{t('hwTestDone')}</b></div><RewardBanner r={reward} /><div className="acts"><button className="dbtn" onClick={onBack}>{t('hwFinish')}</button></div></>}
+      {phase === 'results' && (
+        <div className="vend vresult">
+          <div className="dnote"><b>{nCorrect === words.length ? t('allCorrect') : t('wordsDone')}</b></div>
+          <div className="vstats">
+            <div><b>{words.length}</b><small>{t('totalWords')}</small></div>
+            <div className="ok"><b>{nCorrect}</b><small>{t('correctN')}</small></div>
+            <div className="bad"><b>{words.length - nCorrect}</b><small>{t('incorrectN')}</small></div>
+          </div>
+          {err && <div className="err">{err}</div>}
+          <div className="acts" style={{ justifyContent: 'center' }}>
+            {words.length - nCorrect > 0 && <button className="dbtn ghost" disabled={busy} onClick={fix}><Icon name="undo" size={16} /> {t('fixMistakes')}</button>}
+            <button className="dbtn startbtn" disabled={busy} onClick={finish}>{t('hwFinish')}</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
