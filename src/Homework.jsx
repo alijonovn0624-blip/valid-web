@@ -100,6 +100,7 @@ function HomeworkForm({ groups, onCreated }) {
     setW(i, { busy: true, looked: true });
     try {
       const r = await api('/api/homework/lookup', { method: 'POST', body: { word: w.word } });
+      if (!(r.translations && (r.translations.uz || r.translations.ru))) setErr(t('hwLookupNoTr'));
       setWords((l) => l.map((x, j) => (j === i ? { ...x, busy: false, uz: x.uz || (r.translations && r.translations.uz) || '', ru: x.ru || (r.translations && r.translations.ru) || '',
         definition: x.definition || r.definition || '', example: x.example || r.example || '', imageUrl: x.imageUrl || r.imageUrl || '', imageCredit: x.imageUrl ? x.imageCredit : (r.imageCredit || ''), phonetic: x.phonetic || r.phonetic || '', imgState: (x.imageUrl || r.imageUrl) ? 'ok' : 'none' } : x)));
     } catch (x) { setW(i, { busy: false }); setErr(apiError(x)); }
