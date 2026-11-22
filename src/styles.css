@@ -799,3 +799,5 @@ html[data-theme="light"] .sh-game { color:#fff; }
 .ltile:has(.grpn) small { white-space:normal; }
 @media (max-width:860px){ .dhead .dburger { flex:none; margin-right:8px; } }
 @media (min-width:861px){ .dburger { display:none !important; } }
+
+.gbtn.speak.accent { width:auto; padding:0 12px; gap:6px; display:inline-flex; align-items:center; border-radius:999px; } .gbtn.speak.accent small { font-weight:700; font-size:12px; } .vwordrow { flex-wrap:wrap; justify-content:center; gap:8px; }

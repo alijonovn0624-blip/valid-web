@@ -6,7 +6,7 @@ import { iso, longDay, dayLabel, Ava } from './ui.jsx';
 import { Modal, MistakesModal } from './Pages.jsx';
 import { useClock, fmtCountdown, fmtWhen, fmtTime, lessonLeft, buildCourse } from './lock.js';
 
-const speak = (w) => { try { const u = new SpeechSynthesisUtterance(w); u.lang = 'en-US'; u.rate = 0.9; window.speechSynthesis.cancel(); window.speechSynthesis.speak(u); } catch { /* speech not supported */ } };
+const speak = (w, lang = 'en-US') => { try { const u = new SpeechSynthesisUtterance(w); u.lang = lang; u.rate = 0.9; const v = window.speechSynthesis.getVoices().find((x) => x.lang.replace('_', '-') === lang); if (v) u.voice = v; window.speechSynthesis.cancel(); window.speechSynthesis.speak(u); } catch { /* speech not supported */ } };
 const artFor = (w) => { let n = 0; for (const c of String(w)) n = (n * 31 + c.charCodeAt(0)) % 997; return API + '/avatars/a' + String((n % 12) + 1).padStart(2, '0') + '.svg'; };
 const media = (u) => (!u ? '' : u.startsWith('http') ? u : API + u);
 const upload = (file) => { const fd = new FormData(); fd.append('file', file); return api('/api/homework/upload', { method: 'POST', body: fd }); };
@@ -503,7 +503,7 @@ function VocabFlow({ hw, onBack, onChanged }) {
           <div className="vcard big">
             <div className="vblob">{c.image_url ? <img src={media(c.image_url)} alt="" /> : <img className="vart" src={artFor(c.word)} alt="" />}
             {c.image_provider === 'icons8' && c.image_attribution_url && <a className="vcredit" href={c.image_attribution_url} target="_blank" rel="noopener noreferrer">Icons8</a>}</div>
-            <div className="vwordrow"><b className="vword">{c.word}</b><button type="button" className="gbtn speak" onClick={() => speak(c.word)} aria-label={t('hwPronounce')}><Icon name="volume" size={24} /></button></div>
+            <div className="vwordrow"><b className="vword">{c.word}</b><button type="button" className="gbtn speak accent" onClick={() => speak(c.word, 'en-US')} aria-label="US"><Icon name="volume" size={22} /><small>US</small></button><button type="button" className="gbtn speak accent" onClick={() => speak(c.word, 'en-GB')} aria-label="British"><Icon name="volume" size={22} /><small>UK</small></button></div>
             {c.phonetic && <span className="vphon">{c.phonetic}</span>}
             <span className="vtr">{trans(c)}</span>
             {c.definition && <span className="vdef">{c.definition}</span>}
