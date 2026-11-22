@@ -551,7 +551,7 @@ function VocabFlow({ hw, onBack, onChanged }) {
             <div className={'mcqsheet ' + fb}>
               <div className="mcqverdict"><span className="mcqmark">{fb === 'ok' ? <Icon name="check" size={22} strokeWidth={3} /> : <Icon name="close" size={22} strokeWidth={3} />}</span><b>{fb === 'ok' ? t('correctExcl') : t('wrongTry')}</b></div>
               <RewardBanner r={fb === 'ok' ? reward : null} />
-              {fb === 'ok' ? <button type="button" className="mcqcont" onClick={next}>{cur >= testList.length - 1 ? t('hwFinish') : t('continueBtn')}</button> : <button type="button" className="mcqcont ghost" onClick={() => { setFb(null); setTyped(''); }}>{t('retry')}</button>}
+              {fb === 'ok' ? <button type="button" className="mcqcont" onClick={cur >= testList.length - 1 ? onBack : next}>{cur >= testList.length - 1 ? t('hwFinish') : t('continueBtn')}</button> : <button type="button" className="mcqcont ghost" onClick={() => { setFb(null); setTyped(''); }}>{t('retry')}</button>}
             </div>
           )}
         </div>
@@ -629,7 +629,6 @@ function Unit({ id, onBack, onListChanged }) {
         <span className="hwicons"><span className="keychip" title={t('hwKeys')}><Icon name="key" size={18} /> {hw.mine.keys_left}</span>
           <button type="button" className="gbtn" onClick={() => setSaved(true)} aria-label={t('hwSaved')}><Icon name="bookmark" size={20} /></button></span></div>
       {hw.unit && <p className="muted">{hw.title}</p>}
-      <div className="lbar" title={t('hwResult')}><i style={{ width: total + '%' }} /><em>{t('hwResult')} {total}%</em></div>
       <Card icon="star" title={`1. ${t('hwPartVocab')}`} sub={`${hw.words.length} ${t('hwWords')}`} pct={hw.words.length ? Math.round((okWords / hw.words.length) * 100) : 0} partKey="vocab" off={hw.words.length === 0} coins={R.vocab} onClick={() => setSub('vocab')} />
       <Card icon="play" title={`2. ${t('hwPartVideo')}`} sub={t('hwWatchAll')} pct={null} partKey="video" off={!hw.video_url} locked={!U.video} why={t('hwLockedVocab')} coins={R.video} onClick={() => setSub('video')} />
       <Card icon="homework" title={`3. ${t('hwExercises')}`} sub={`${hw.exercises.length} ${t('hwTasks')}`} pct={hw.exercises.length ? Math.round((okEx / hw.exercises.length) * 100) : 0} partKey="exercises" off={hw.exercises.length === 0} locked={!U.exercises} why={hw.video_url ? t('hwLockedVideo') : t('hwLockedVocab')} coins={R.exercises} onClick={() => setSub('run')} />
