@@ -171,7 +171,6 @@ export default function StudentHome({ user, nav, onHomework, StoryViewer }) {
             <Icon name="bookmark" size={64} strokeWidth={1.3} className="sh-vbig" />
             <div><small className="muted">{t('myVocabulary')}</small><b className="sh-vnum">{sum ? sum.saved : 0} <span className="sh-unit">{t('hwWords')}</span></b></div>
             <button type="button" className="sh-btn" onClick={() => nav('vocab')}>{t('viewBtn')} →</button>
-            <button type="button" className="sh-btn ghost" onClick={() => setSaved(true)}>{t('myVocabulary')}</button>
           </div>
         </section>
 
