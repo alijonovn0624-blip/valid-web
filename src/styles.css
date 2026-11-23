@@ -854,3 +854,13 @@ html[data-theme="light"] .sh-game { color:#fff; }
 .vedit-f { flex:1; min-width:220px; display:flex; flex-direction:column; gap:8px; }
 .sh-btn.ghost { background:none; border:1px solid var(--d-line,#ffffff33); margin-left:8px; }
 @media (max-width:560px){ .vt-img { display:none; } .vt-w b { font-size:15px; } }
+
+/* vocabulary rows like the mobile app: speaker, picture, "word – translation", +  */
+.vlist-head { display:flex; justify-content:space-between; align-items:center; margin:8px 2px 4px; } .vlist-all { background:none; border:0; color:#f5b301; font:inherit; font-weight:700; cursor:pointer; }
+.vrow { display:flex; align-items:center; gap:12px; padding:10px 4px; border-bottom:1px solid #ffffff14; }
+.vrow-spk { flex:none; width:44px; height:44px; border-radius:50%; border:0; background:#f5b301; color:#1b1b1b; display:grid; place-items:center; cursor:pointer; }
+.vrow-img { flex:none; width:64px; height:64px; border-radius:14px; background:#fff; overflow:hidden; display:grid; place-items:center; } .vrow-img img { width:100%; height:100%; object-fit:cover; } .vrow-img i { font-style:normal; font-weight:800; font-size:26px; color:#5b6bff; }
+.vrow-t { flex:1; min-width:0; font-size:17px; line-height:1.3; } .vrow-t b { font-weight:700; }
+.vrow-rm { flex:none; width:38px; height:38px; border-radius:50%; border:1px solid #ffffff2a; background:none; color:inherit; display:grid; place-items:center; cursor:pointer; opacity:.8; } .vrow-rm:hover { border-color:#ff5a5f; color:#ff5a5f; }
+.vrow .vt-plus { flex:none; }
+@media (max-width:560px){ .vrow-img { width:54px; height:54px; } .vrow-t { font-size:15px; } }

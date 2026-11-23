@@ -117,7 +117,7 @@ export default function Games({ game, onBack }) {
       <div className="hwtop"><h3 className="hwtitle">{t(key)}</h3></div>
       {err && <div className="err">{err}</div>}
       {words === null ? <p className="muted">{t('loading')}</p>
-        : words.length < (key === 'gQuickQuiz' ? 4 : 3) ? <p className="muted">{t('gmNoWords')}</p>
+        : words.length < 3 ? <p className="muted">{t('gmNoWords')}</p>
         : <G words={words} onBack={onBack} />}
     </div>
   );

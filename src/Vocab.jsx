@@ -8,18 +8,21 @@ const speak = (w, lang = 'en-US') => { try { const u = new SpeechSynthesisUttera
 const tr = (w) => ((localStorage.getItem('lang') || 'en') === 'ru' ? (w.ru || w.uz) : (w.uz || w.ru)) || '';
 
 /* ---------------- student: two buttons (Vocabulary list / Archive); both end in a word table with "+" ---------------- */
-function WordTable({ words, onToggle }) {
+function WordTable({ words, onToggle, onSelectAll, onRemove }) {
+  const all = words.length > 0 && words.every((w) => w.picked);
   return (
-    <table className="vt"><tbody>
+    <div className="vlist">
+      <div className="vlist-head"><b>{t('hwWords')}</b>{onSelectAll && <button type="button" className="vlist-all" onClick={() => onSelectAll(!all)}>{all ? t('vocClearAll') : t('vocSelectAll')}</button>}</div>
       {words.map((w) => (
-        <tr key={w.id}>
-          <td className="vt-img">{w.image_url ? <img src={media(w.image_url)} alt="" /> : null}</td>
-          <td className="vt-w"><b>{w.word}</b><button type="button" className="gbtn speak" onClick={() => speak(w.word)} aria-label="US"><Icon name="volume" size={16} /></button>{w.phonetic && <small className="muted"> {w.phonetic}</small>}{w.definition && <small className="vt-def">{w.definition}</small>}</td>
-          <td className="vt-t">{tr(w)}</td>
-          <td className="vt-p"><button type="button" className={'vt-plus' + (w.picked ? ' on' : '')} onClick={() => onToggle(w)} aria-label={w.picked ? t('vocAdded') : t('vocAdd')} title={w.picked ? t('vocAdded') : t('vocAdd')}><Icon name={w.picked ? 'check' : 'plus'} size={20} strokeWidth={3} /></button></td>
-        </tr>
+        <div className="vrow" key={w.id}>
+          <button type="button" className="vrow-spk" onClick={() => speak(w.word)} aria-label="US"><Icon name="volume" size={20} /></button>
+          <span className="vrow-img">{w.image_url ? <img src={media(w.image_url)} alt="" loading="lazy" /> : <i>{w.word.slice(0, 1).toUpperCase()}</i>}</span>
+          <span className="vrow-t"><b>{w.word}</b> – {tr(w)}{w.definition && <small className="vt-def">{w.definition}</small>}</span>
+          {onRemove && <button type="button" className="vrow-rm" onClick={() => onRemove(w)} aria-label={t('vocRemove')} title={t('vocRemove')}><Icon name="trash" size={18} /></button>}
+          <button type="button" className={'vt-plus' + (w.picked ? ' on' : '')} onClick={() => onToggle(w)} aria-label={w.picked ? t('vocAdded') : t('vocAdd')} title={w.picked ? t('vocAdded') : t('vocAdd')}><Icon name={w.picked ? 'check' : 'plus'} size={20} strokeWidth={3} /></button>
+        </div>
       ))}
-    </tbody></table>
+    </div>
   );
 }
 
@@ -33,6 +36,16 @@ export function VocabStudent() {
   const toggleTheme = async (w) => {
     try { const r = await api(`/api/vocab/words/${w.id}/pick`, { method: 'POST' }); setData((d) => ({ ...d, words: d.words.map((x) => (x.id === w.id ? { ...x, picked: r.picked } : x)) })); }
     catch (e) { setErr(apiError(e)); }
+  };
+  const selectAllTheme = async (on) => {
+    try { await api(`/api/vocab/themes/${open}/pick-all`, { method: 'POST', body: { on } }); setData((d) => ({ ...d, words: d.words.map((x) => ({ ...x, picked: on })) })); } catch (e) { setErr(apiError(e)); }
+  };
+  const selectAllArch = async (on) => {
+    try { await api('/api/vocab/archive-pick-all', { method: 'POST', body: { on } }); setArch((l) => l.map((x) => ({ ...x, picked: on }))); } catch (e) { setErr(apiError(e)); }
+  };
+  const removeArch = async (w) => {
+    if (!confirm(t('vocRemoveAsk'))) return;
+    try { await api('/api/vocab/archive/' + w.id, { method: 'DELETE' }); setArch((l) => l.filter((x) => x.id !== w.id)); } catch (e) { setErr(apiError(e)); }
   };
   const toggleArch = async (w) => {
     try { const r = await api(`/api/vocab/archive/${w.id}/pick`, { method: 'POST' }); setArch((l) => l.map((x) => (x.id === w.id ? { ...x, picked: r.picked } : x))); }
@@ -59,11 +72,11 @@ export function VocabStudent() {
       {tab === 'list' && open && (
         <>
           <div className="hwtop"><button type="button" className="dbtn ghost" onClick={() => { setOpen(null); loadThemes(); }}><Icon name="back" size={16} /> {t('vocThemes')}</button><h3 className="hwtitle">{data ? data.name : ''}</h3></div>
-          {!data ? <p className="muted">{t('loading')}</p> : data.words.length === 0 ? <p className="muted">{t('vocEmpty')}</p> : (<><p className="muted small">{t('vocHint')}</p><WordTable words={data.words} onToggle={toggleTheme} /></>)}
+          {!data ? <p className="muted">{t('loading')}</p> : data.words.length === 0 ? <p className="muted">{t('vocEmpty')}</p> : (<><p className="muted small">{t('vocHint')}</p><WordTable words={data.words} onToggle={toggleTheme} onSelectAll={selectAllTheme} /></>)}
         </>
       )}
 
-      {tab === 'archive' && (arch === null ? <p className="muted">{t('loading')}</p> : arch.length === 0 ? <p className="muted">{t('vocArchiveEmpty')}</p> : (<><p className="muted small">{t('vocArchiveHint')}</p><WordTable words={arch} onToggle={toggleArch} /></>))}
+      {tab === 'archive' && (arch === null ? <p className="muted">{t('loading')}</p> : arch.length === 0 ? <p className="muted">{t('vocArchiveEmpty')}</p> : (<><p className="muted small">{t('vocArchiveHint')}</p><WordTable words={arch} onToggle={toggleArch} onSelectAll={selectAllArch} onRemove={removeArch} /></>))}
     </div>
   );
 }
@@ -123,6 +136,8 @@ function WordEditor({ themeId, init, onSaved, onCancel }) {
 export function VocabAdmin() {
   const [themes, setThemes] = useState([]); const [open, setOpen] = useState(null); const [data, setData] = useState(null); const [name, setName] = useState(''); const [err, setErr] = useState('');
   const [editing, setEditing] = useState(null); // null | 'new' | word object
+  const [msg, setMsg] = useState('');
+  const genPics = async (themeId) => { setMsg(''); try { const r = await api('/api/vocab/images', { method: 'POST', body: themeId ? { themeId } : {} }); setMsg(r.busy ? t('vocGenBusy') : r.missing ? t('vocGenStarted').replace('{n}', r.missing) : t('vocGenNone')); } catch (e) { setErr(apiError(e)); } };
   const load = () => api('/api/vocab/themes').then(setThemes).catch((e) => setErr(apiError(e)));
   const loadTheme = (id) => api('/api/vocab/themes/' + id).then(setData).catch((e) => setErr(apiError(e)));
   useEffect(() => { load(); }, []);
@@ -135,6 +150,8 @@ export function VocabAdmin() {
         <div className="hwtop"><button type="button" className="dbtn ghost" onClick={() => { setOpen(null); setData(null); setEditing(null); }}><Icon name="back" size={16} /> {t('vocThemes')}</button><h3 className="hwtitle">{data.name}</h3>
           <button type="button" className="dbtn danger" onClick={() => delTheme(open)} aria-label="Delete"><Icon name="trash" size={16} /></button></div>
         {err && <div className="err">{err}</div>}
+        <div className="acts"><button type="button" className="dbtn ghost" onClick={() => genPics(open)}>{t('vocGenPics')}</button></div>
+        {msg && <p className="muted small">{msg}</p>}
         {editing ? <WordEditor themeId={open} init={editing === 'new' ? null : { id: editing.id, word: editing.word, uz: editing.uz || '', ru: editing.ru || '', definition: editing.definition || '', example: editing.example || '', phonetic: editing.phonetic || '', imageUrl: editing.image_url || '', imageCredit: editing.image_credit || '' }}
           onSaved={() => { setEditing(null); loadTheme(open); load(); }} onCancel={() => setEditing(null)} />
           : <div className="acts"><button type="button" className="dbtn" onClick={() => setEditing('new')}><Icon name="plus" size={16} /> {t('vocAddWord')}</button></div>}
@@ -155,6 +172,8 @@ export function VocabAdmin() {
     <div className="dcard vocab">
       <div className="hwtop"><h3 className="hwtitle">{t('vocabLists')}</h3></div>
       {err && <div className="err">{err}</div>}
+      <div className="acts"><button type="button" className="dbtn ghost" onClick={() => genPics(null)}>{t('vocGenPicsAll')}</button></div>
+      {msg && <p className="muted small">{msg}</p>}
       <div className="vedit-row"><input type="text" value={name} placeholder={t('vocThemeName')} maxLength={80} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && add()} /><button type="button" className="dbtn" onClick={add}><Icon name="plus" size={16} /> {t('vocAddTheme')}</button></div>
       <div className="vtheme-grid">
         {themes.map((x) => (
