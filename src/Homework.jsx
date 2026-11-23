@@ -4,6 +4,7 @@ import { Icon } from './icons.jsx';
 import { t, apiError } from './i18n.js';
 import { iso, longDay, dayLabel, Ava } from './ui.jsx';
 import { Modal, MistakesModal } from './Pages.jsx';
+import { WordPicture, PosTag, IconCredits } from './WordPicture.jsx';
 import { useClock, fmtCountdown, fmtWhen, fmtTime, lessonLeft, buildCourse } from './lock.js';
 
 const speak = (w, lang = 'en-US') => { try { const u = new SpeechSynthesisUtterance(w); u.lang = lang; u.rate = 0.9; const v = window.speechSynthesis.getVoices().find((x) => x.lang.replace('_', '-') === lang); if (v) u.voice = v; window.speechSynthesis.cancel(); window.speechSynthesis.speak(u); } catch { /* speech not supported */ } };
@@ -14,7 +15,7 @@ const KIND_LABEL = { choice: 'hwKindChoice', gapfill: 'hwKindGap', complete: 'hw
 
 /* =====================  Admin: create + manage  /  Teacher: read-only  ===================== */
 const emptyEx = (kind = 'choice') => ({ kind, question: '', options: ['', '', ''], correct: 0, answer: '' });
-const emptyWord = () => ({ word: '', uz: '', ru: '', definition: '', example: '', imageUrl: '', imageCredit: '', imageProvider: '', imageAssetId: '', imageStyle: '', imageAttributionUrl: '', busy: false, looked: false, imgState: '', cands: [], picker: false });
+const emptyWord = () => ({ word: '', uz: '', ru: '', definition: '', example: '', imageUrl: '', imageCredit: '', imageProvider: '', imageAssetId: '', imageStyle: '', imageAttributionUrl: '', imageRef: '', pos: '', busy: false, looked: false, imgState: '', cands: [], picker: false });
 const LETTER = (i) => String.fromCharCode(65 + i);
 
 function HomeworkDetail({ id, onClose, isAdmin, onDeleted }) {
@@ -102,7 +103,7 @@ function HomeworkForm({ groups, onCreated }) {
       const r = await api('/api/homework/lookup', { method: 'POST', body: { word: w.word } });
       if (!(r.translations && (r.translations.uz || r.translations.ru))) setErr(t('hwLookupNoTr'));
       setWords((l) => l.map((x, j) => (j === i ? { ...x, busy: false, uz: x.uz || (r.translations && r.translations.uz) || '', ru: x.ru || (r.translations && r.translations.ru) || '',
-        definition: x.definition || r.definition || '', example: x.example || r.example || '', imageUrl: x.imageUrl || r.imageUrl || '', imageCredit: x.imageUrl ? x.imageCredit : (r.imageCredit || ''), phonetic: x.phonetic || r.phonetic || '', imgState: (x.imageUrl || r.imageUrl) ? 'ok' : 'none' } : x)));
+        definition: x.definition || r.definition || '', example: x.example || r.example || '', imageUrl: x.imageUrl || r.imageUrl || '', imageCredit: x.imageUrl ? x.imageCredit : (r.imageCredit || ''), phonetic: x.phonetic || r.phonetic || '', imageProvider: x.imageUrl ? x.imageProvider : (r.imageProvider || ''), imageRef: x.imageUrl ? x.imageRef : (r.imageRef || ''), pos: x.pos || r.pos || '', imgState: (x.imageUrl || r.imageUrl) ? 'ok' : 'none' } : x)));
     } catch (x) { setW(i, { busy: false }); setErr(apiError(x)); }
   };
   // picture suggestions (Pexels / Unsplash through the backend): search, pick, or upload your own
@@ -119,7 +120,7 @@ function HomeworkForm({ groups, onCreated }) {
     try {
       const r = await api('/api/homework/image-pick', { method: 'POST', body: { word: words[i].word, id: c.id, provider: c.provider, style: c.style, attributionUrl: c.attributionUrl } });
       if (r.provider === 'icons8') setW(i, { imageUrl: r.url, imageCredit: 'Icons8', imageProvider: 'icons8', imageAssetId: r.assetId, imageStyle: r.style || '', imageAttributionUrl: r.attributionUrl || '', busy: false, picker: false, imgState: 'ok' });
-      else setW(i, { imageUrl: r.url, imageCredit: r.credit, imageProvider: '', imageAssetId: '', imageStyle: '', imageAttributionUrl: '', busy: false, picker: false, imgState: 'ok' });
+      else setW(i, { imageUrl: r.url, imageCredit: r.credit, imageProvider: '', imageRef: '', imageAssetId: '', imageStyle: '', imageAttributionUrl: '', busy: false, picker: false, imgState: 'ok' });
     } catch (x) { setW(i, { busy: false, imgState: 'error' }); setErr(apiError(x)); }
   };
   const pickVideo = async (file) => {
@@ -134,7 +135,7 @@ function HomeworkForm({ groups, onCreated }) {
     const exercises = exs.map((x) => (x.kind === 'choice'
       ? { kind: 'choice', question: x.question, options: x.options.filter((o) => o.trim()), answer: x.options[x.correct] || '' }
       : { kind: x.kind, question: x.question, answer: x.answer }));
-    const wl = words.filter((w) => w.word.trim()).map((w) => ({ word: w.word, imageUrl: w.imageProvider ? undefined : (w.imageUrl || undefined), imageCredit: w.imageCredit || undefined, imageProvider: w.imageProvider || undefined, imageAssetId: w.imageAssetId || undefined, imageStyle: w.imageStyle || undefined, imageAttributionUrl: w.imageAttributionUrl || undefined, definition: w.definition, example: w.example, phonetic: w.phonetic || undefined, translations: { uz: w.uz, ru: w.ru } }));
+    const wl = words.filter((w) => w.word.trim()).map((w) => ({ word: w.word, imageUrl: w.imageProvider === 'icons8' ? undefined : (w.imageUrl || undefined), imageCredit: w.imageCredit || undefined, imageProvider: w.imageProvider || undefined, imageRef: w.imageRef || undefined, pos: w.pos || undefined, imageAssetId: w.imageAssetId || undefined, imageStyle: w.imageStyle || undefined, imageAttributionUrl: w.imageAttributionUrl || undefined, definition: w.definition, example: w.example, phonetic: w.phonetic || undefined, translations: { uz: w.uz, ru: w.ru } }));
     setBusy(true);
     try {
       await api('/api/homework', { method: 'POST', body: { groupId: Number(f.groupId), unitNo: Number(f.unitNo), lessonNo: Number(f.lessonNo), title: f.title, dueDate: f.dueDate, description: f.description, videoUrl: f.videoUrl || undefined, videoDescription: f.videoDescription, words: wl, exercises } });
@@ -166,15 +167,9 @@ function HomeworkForm({ groups, onCreated }) {
             <button type="button" className="dbtn ghost" onClick={() => setWords((l) => l.filter((_, j) => j !== i))} aria-label={t('remove')}><Icon name="trash" size={15} /></button>
           </div>
           <div className="hwwordbody">
-            <div className="wimg">
-              {w.busy ? <span className="muted small">{t('loading')}</span> : w.imageUrl ? <img src={media(w.imageUrl)} alt="" /> : <span className="muted small">{w.imgState === 'error' ? t('hwImageError') : w.imgState === 'unconfigured' ? t('hwImageNoKey') : w.imgState === 'none' ? t('hwNoImageFound') : t('hwNoPicture')}</span>}
-              <span className="wimgbtns">
-                <button type="button" className="dbtn ghost small" disabled={!w.word.trim() || w.imgState === 'loading'} onClick={() => findImages(i)}><Icon name="find" size={14} /> {w.imgState === 'loading' ? t('loading') : t('hwFindImage')}</button>
-                <button type="button" className="dbtn ghost small" disabled={!w.word.trim() || w.imgState === 'loading'} onClick={() => findImages(i, 'icons8')}><Icon name="find" size={14} /> {t('hwFind3d')}</button>
-                <label className="dbtn ghost small"><Icon name="image" size={14} /> {t('hwUpload')}
-                  <input type="file" hidden accept="image/jpeg,image/png,image/webp" onChange={(e) => { pickImage(i, e.target.files[0]); e.target.value = ''; }} /></label>
-                {w.imageUrl && <button type="button" className="dbtn ghost small" onClick={() => setW(i, { imageUrl: '', imageCredit: '', imageProvider: '', imageAssetId: '', imageStyle: '', imageAttributionUrl: '' })}>{t('remove')}</button>}
-              </span>
+            <div className="wpicwrap">
+              <WordPicture word={w.word} value={w} busy={w.busy} onChange={(p) => setW(i, { ...p, imgState: 'ok' })} onUpload={async (file) => (await upload(file)).url} />
+              <span className="wimgbtns"><button type="button" className="dbtn ghost small" disabled={!w.word.trim() || w.imgState === 'loading'} onClick={() => findImages(i, 'icons8')}><Icon name="find" size={14} /> {t('hwFind3d')}</button></span>
             </div>
             <div className="wfields">
               <input type="text" value={w.uz} placeholder={t('hwUz')} maxLength={200} onChange={(e) => setW(i, { uz: e.target.value })} />
@@ -521,9 +516,9 @@ function VocabFlow({ hw, onBack, onChanged }) {
           <p className="muted small">{inFix && <b>{t('fixMistakes')} · </b>}{idx + 1}/{cards.length}</p>
           <div className="vdots">{cards.map((x, k) => <i key={x.id} className={k === idx ? 'on' : k < idx ? 'seen' : ''} />)}</div>
           <div className="vcard big">
-            <div className="vblob">{c.image_url ? <img src={media(c.image_url)} alt="" /> : <img className="vart" src={artFor(c.word)} alt="" />}
+            <div className={'vblob' + (c.image_provider === 'openmoji' || c.image_provider === 'iconify' ? ' vicon' : '')}>{c.image_url ? <img src={media(c.image_url)} alt={c.word} onError={(e) => { e.currentTarget.src = artFor(c.word); e.currentTarget.className = 'vart'; }} /> : <img className="vart" src={artFor(c.word)} alt="" />}
             {c.image_provider === 'icons8' && c.image_attribution_url && <a className="vcredit" href={c.image_attribution_url} target="_blank" rel="noopener noreferrer">Icons8</a>}</div>
-            <div className="vwordrow"><b className="vword">{c.word}</b>
+            <div className="vwordrow"><b className="vword">{c.word}</b>{c.pos && <PosTag pos={c.pos} full />}
               <button type="button" className="gbtn speak accent" onClick={() => speak(c.word, 'en-US')} aria-label="US"><Icon name="volume" size={22} /><small>US</small></button>
               <button type="button" className="gbtn speak accent" onClick={() => speak(c.word, 'en-GB')} aria-label="British"><Icon name="volume" size={22} /><small>UK</small></button></div>
             {c.phonetic && <span className="vphon">{c.phonetic}</span>}
@@ -531,7 +526,7 @@ function VocabFlow({ hw, onBack, onChanged }) {
             <span className="vtr"><small className="vlang">RU</small> {tr(c, 'ru')}</span>
             {c.definition && <span className="vdef">{c.definition}</span>}
             {c.example && <span className="vex">“{c.example}”</span>}
-            {c.image_credit && <small className="vcredit">{t('hwPhotoCredit')}: {c.image_credit}</small>}
+            {c.image_credit && <small className="vcredit">{c.image_provider === 'openmoji' || c.image_provider === 'iconify' ? <IconCredits className="inl" /> : <>{t('hwPhotoCredit')}: {c.image_credit}</>}</small>}
             <button type="button" className="gbtn vsave" onClick={() => save(c)} aria-label={t('hwSaved')}><Icon name="bookmark" size={20} fill={(saved[c.id] !== undefined ? saved[c.id] : c.saved) ? 'currentColor' : 'none'} /></button>
           </div>
           <div className="acts" style={{ justifyContent: 'center' }}>

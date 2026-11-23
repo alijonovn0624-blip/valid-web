@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from './api.js';
 import { t, apiError } from './i18n.js';
 import { Icon } from './icons.jsx';
+import { WordImg } from './WordPicture.jsx';
 
 // Three small games built from the student's own vocabulary (GET /api/homework/game-words).
 const shuffle = (a) => { const b = [...a]; for (let i = b.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [b[i], b[j]] = [b[j], b[i]]; } return b; };
@@ -64,6 +65,7 @@ function Quiz({ words, onBack }) {
     <div className="gm-quiz">
       <div className="mcqbar"><i style={{ width: Math.round((i / qs.length) * 100) + '%' }} /></div>
       <p className="muted small" style={{ textAlign: 'center' }}>{i + 1}/{qs.length}</p>
+      <div className="gm-pic"><WordImg url={q.w.image_url} provider={q.w.image_provider} size={96} word={q.w.word} /></div>
       <h3 className="gm-q">{q.w.word}</h3>
       <div className="gm-opts">
         {q.opts.map((o) => <button key={o.id} type="button" className={'gm-tile' + (pick ? (o.id === q.w.id ? ' ok' : o.id === pick ? ' bad' : '') : '')} onClick={() => answer(o)}>{tx(o)}</button>)}
@@ -89,6 +91,7 @@ function Scramble({ words, onBack }) {
     <div className="gm-quiz">
       <div className="mcqbar"><i style={{ width: Math.round((i / qs.length) * 100) + '%' }} /></div>
       <p className="muted small" style={{ textAlign: 'center' }}>{i + 1}/{qs.length}</p>
+      <div className="gm-pic"><WordImg url={q.w.image_url} provider={q.w.image_provider} size={96} word={q.w.word} /></div>
       <h3 className="gm-q">{tx(q.w)}</h3>
       <div className={'twboxes' + (fb === 'ok' ? ' good' : fb === 'bad' ? ' wrong' : '')}>
         {q.letters.map((_, k) => <span key={k} className={'twbox' + (built[k] ? ' has' : '')}>{built[k] || ''}</span>)}

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { api, API } from './api.js';
 import { t, apiError } from './i18n.js';
 import { Icon } from './icons.jsx';
+import { WordPicture, WordImg, PosTag, IconCredits } from './WordPicture.jsx';
 
 const media = (u) => (!u ? '' : u.startsWith('http') ? u : API + u);
 const speak = (w, lang = 'en-US') => { try { const u = new SpeechSynthesisUtterance(w); u.lang = lang; u.rate = 0.9; window.speechSynthesis.cancel(); window.speechSynthesis.speak(u); } catch {} };
@@ -16,12 +17,13 @@ function WordTable({ words, onToggle, onSelectAll, onRemove }) {
       {words.map((w) => (
         <div className="vrow" key={w.id}>
           <button type="button" className="vrow-spk" onClick={() => speak(w.word)} aria-label="US"><Icon name="volume" size={20} /></button>
-          <span className="vrow-img">{w.image_url ? <img src={media(w.image_url)} alt="" loading="lazy" /> : <i>{w.word.slice(0, 1).toUpperCase()}</i>}</span>
-          <span className="vrow-t"><b>{w.word}</b> – {tr(w)}{w.definition && <small className="vt-def">{w.definition}</small>}</span>
+          <span className="vrow-img"><WordImg url={w.image_url} provider={w.image_provider} size={64} word={w.word} /></span>
+          <span className="vrow-t"><b>{w.word}</b> <PosTag pos={w.pos} /> – {tr(w)}{w.definition && <small className="vt-def">{w.definition}</small>}</span>
           {onRemove && <button type="button" className="vrow-rm" onClick={() => onRemove(w)} aria-label={t('vocRemove')} title={t('vocRemove')}><Icon name="trash" size={18} /></button>}
           <button type="button" className={'vt-plus' + (w.picked ? ' on' : '')} onClick={() => onToggle(w)} aria-label={w.picked ? t('vocAdded') : t('vocAdd')} title={w.picked ? t('vocAdded') : t('vocAdd')}><Icon name={w.picked ? 'check' : 'plus'} size={20} strokeWidth={3} /></button>
         </div>
       ))}
+      <IconCredits />
     </div>
   );
 }
@@ -82,7 +84,7 @@ export function VocabStudent() {
 }
 
 /* ---------------- admin: themes and their words ---------------- */
-const EMPTY = { word: '', uz: '', ru: '', definition: '', example: '', phonetic: '', imageUrl: '', imageCredit: '' };
+const EMPTY = { word: '', uz: '', ru: '', definition: '', example: '', phonetic: '', imageUrl: '', imageCredit: '', imageProvider: '', imageRef: '', pos: '' };
 function WordEditor({ themeId, init, onSaved, onCancel }) {
   const [f, setF] = useState(init || EMPTY); const [busy, setBusy] = useState(false); const [err, setErr] = useState(''); const [seed, setSeed] = useState(1);
   const set = (k) => (e) => setF((x) => ({ ...x, [k]: e.target.value }));
@@ -90,14 +92,14 @@ function WordEditor({ themeId, init, onSaved, onCancel }) {
     if (!f.word.trim()) return; setBusy(true); setErr('');
     try {
       const r = await api('/api/homework/lookup', { method: 'POST', body: { word: f.word } });
-      setF((x) => ({ ...x, uz: (r.translations && r.translations.uz) || x.uz, ru: (r.translations && r.translations.ru) || x.ru, definition: r.definition || x.definition, example: r.example || x.example, phonetic: r.phonetic || x.phonetic, imageUrl: r.imageUrl || x.imageUrl, imageCredit: r.imageUrl ? r.imageCredit : x.imageCredit }));
+      setF((x) => ({ ...x, uz: (r.translations && r.translations.uz) || x.uz, ru: (r.translations && r.translations.ru) || x.ru, definition: r.definition || x.definition, example: r.example || x.example, phonetic: r.phonetic || x.phonetic, imageUrl: x.imageUrl || r.imageUrl || '', imageCredit: x.imageUrl ? x.imageCredit : (r.imageCredit || ''), imageProvider: x.imageUrl ? x.imageProvider : (r.imageProvider || ''), imageRef: x.imageUrl ? x.imageRef : (r.imageRef || ''), pos: x.pos || r.pos || '' }));
       setSeed(1);
     } catch (e) { setErr(apiError(e)); }
     setBusy(false);
   };
   const newPic = async () => {
     if (!f.word.trim()) return; const n = (seed % 4) + 1; setBusy(true); setErr('');
-    try { const r = await api('/api/homework/image-pick', { method: 'POST', body: { word: f.word, id: String(n), provider: 'ai' } }); setSeed(n); setF((x) => ({ ...x, imageUrl: r.url, imageCredit: r.credit })); }
+    try { const r = await api('/api/homework/image-pick', { method: 'POST', body: { word: f.word, id: String(n), provider: 'ai' } }); setSeed(n); setF((x) => ({ ...x, imageUrl: r.url, imageCredit: r.credit, imageProvider: '', imageRef: '' })); }
     catch (e) { setErr(apiError(e)); }
     setBusy(false);
   };
@@ -117,7 +119,7 @@ function WordEditor({ themeId, init, onSaved, onCancel }) {
       </div>
       <div className="vedit-body">
         <div className="vedit-pic">
-          {f.imageUrl ? <img src={media(f.imageUrl)} alt="" /> : <div className="vedit-ph" />}
+          <WordPicture word={f.word} value={f} busy={busy} onChange={(p) => setF((x) => ({ ...x, ...p }))} onUpload={async (file) => { const fd = new FormData(); fd.append('file', file); return (await api('/api/homework/upload', { method: 'POST', body: fd })).url; }} />
           <button type="button" className="dbtn ghost small" disabled={busy || !f.word.trim()} onClick={newPic}>{t('vocNewPic')}</button>
         </div>
         <div className="vedit-f">
@@ -136,7 +138,9 @@ function WordEditor({ themeId, init, onSaved, onCancel }) {
 export function VocabAdmin() {
   const [themes, setThemes] = useState([]); const [open, setOpen] = useState(null); const [data, setData] = useState(null); const [name, setName] = useState(''); const [err, setErr] = useState('');
   const [editing, setEditing] = useState(null); // null | 'new' | word object
-  const [msg, setMsg] = useState('');
+  const [msg, setMsg] = useState(''); const [enr, setEnr] = useState(null);
+  const startEnrich = async () => { try { setEnr(await api('/api/vocab/enrich', { method: 'POST', body: {} })); } catch (e) { setErr(apiError(e)); } };
+  useEffect(() => { if (!enr || !enr.busy) return; const h = setTimeout(() => api('/api/vocab/enrich').then(setEnr).catch(() => {}), 3000); return () => clearTimeout(h); }, [enr]);
   const genPics = async (themeId) => { setMsg(''); try { const r = await api('/api/vocab/images', { method: 'POST', body: themeId ? { themeId } : {} }); setMsg(r.busy ? t('vocGenBusy') : r.missing ? t('vocGenStarted').replace('{n}', r.missing) : t('vocGenNone')); } catch (e) { setErr(apiError(e)); } };
   const load = () => api('/api/vocab/themes').then(setThemes).catch((e) => setErr(apiError(e)));
   const loadTheme = (id) => api('/api/vocab/themes/' + id).then(setData).catch((e) => setErr(apiError(e)));
@@ -152,14 +156,14 @@ export function VocabAdmin() {
         {err && <div className="err">{err}</div>}
         <div className="acts"><button type="button" className="dbtn ghost" onClick={() => genPics(open)}>{t('vocGenPics')}</button></div>
         {msg && <p className="muted small">{msg}</p>}
-        {editing ? <WordEditor themeId={open} init={editing === 'new' ? null : { id: editing.id, word: editing.word, uz: editing.uz || '', ru: editing.ru || '', definition: editing.definition || '', example: editing.example || '', phonetic: editing.phonetic || '', imageUrl: editing.image_url || '', imageCredit: editing.image_credit || '' }}
+        {editing ? <WordEditor themeId={open} init={editing === 'new' ? null : { id: editing.id, word: editing.word, uz: editing.uz || '', ru: editing.ru || '', definition: editing.definition || '', example: editing.example || '', phonetic: editing.phonetic || '', imageUrl: editing.image_url || '', imageCredit: editing.image_credit || '', imageProvider: editing.image_provider || '', imageRef: editing.image_ref || '', pos: editing.pos || '' }}
           onSaved={() => { setEditing(null); loadTheme(open); load(); }} onCancel={() => setEditing(null)} />
           : <div className="acts"><button type="button" className="dbtn" onClick={() => setEditing('new')}><Icon name="plus" size={16} /> {t('vocAddWord')}</button></div>}
         <table className="vt"><tbody>
           {data.words.map((w) => (
             <tr key={w.id}>
-              <td className="vt-img">{w.image_url ? <img src={media(w.image_url)} alt="" /> : null}</td>
-              <td className="vt-w"><b>{w.word}</b><small className="vt-def">{w.definition}</small></td>
+              <td className="vt-img"><WordImg url={w.image_url} provider={w.image_provider} size={48} word={w.word} /></td>
+              <td className="vt-w"><b>{w.word}</b> <PosTag pos={w.pos} /><small className="vt-def">{w.definition}</small></td>
               <td className="vt-t">{w.uz}{w.ru ? ' / ' + w.ru : ''}</td>
               <td className="vt-p"><button type="button" className="dbtn ghost small" onClick={() => setEditing(w)}>{t('edit')}</button> <button type="button" className="dbtn ghost small" onClick={() => delWord(w.id)}><Icon name="trash" size={14} /></button></td>
             </tr>
@@ -172,7 +176,8 @@ export function VocabAdmin() {
     <div className="dcard vocab">
       <div className="hwtop"><h3 className="hwtitle">{t('vocabLists')}</h3></div>
       {err && <div className="err">{err}</div>}
-      <div className="acts"><button type="button" className="dbtn ghost" onClick={() => genPics(null)}>{t('vocGenPicsAll')}</button></div>
+      <div className="acts"><button type="button" className="dbtn" disabled={enr && enr.busy} onClick={startEnrich}><Icon name="find" size={16} /> {t('icEnrich')}</button><button type="button" className="dbtn ghost" onClick={() => genPics(null)}>{t('vocGenPicsAll')}</button></div>
+      {enr && <p className="muted small">{enr.busy ? t('icEnrichBusy') : t('icEnrichDone')}: {enr.done}/{enr.total} · {t('icIcons')}: {enr.icons} · {t('icTypes')}: {enr.pos}</p>}
       {msg && <p className="muted small">{msg}</p>}
       <div className="vedit-row"><input type="text" value={name} placeholder={t('vocThemeName')} maxLength={80} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && add()} /><button type="button" className="dbtn" onClick={add}><Icon name="plus" size={16} /> {t('vocAddTheme')}</button></div>
       <div className="vtheme-grid">
