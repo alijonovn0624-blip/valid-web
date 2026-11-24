@@ -892,3 +892,18 @@ html[data-theme="light"] .sh-game { color:#fff; }
 @media (max-width:640px) { .wpicwrap { flex-basis:100%; } }
 
 .gm-pic { display:flex; justify-content:center; margin:6px 0 2px; }
+
+/* exercise instruction, video switch, runner nav, congratulations */
+.hwinstr { margin:0 0 8px; padding:10px 14px; border-left:4px solid #f5b301; border-radius:10px; background:rgba(245,179,1,.12); font-weight:600; font-size:15px; line-height:1.4; color:inherit; display:block; }
+.hwinstr-ed { display:grid; gap:6px; font-weight:600; font-size:14px; }
+.hwinstr-ed .req { color:#ff5a6e; }
+.hwinstr-ed textarea { width:100%; box-sizing:border-box; resize:vertical; }
+.hwswitch { display:flex; align-items:center; gap:10px; font-weight:600; cursor:pointer; margin:6px 0; }
+.hwswitch input { width:20px; height:20px; accent-color:#f5b301; }
+.hwnav { display:flex; gap:8px; align-items:center; }
+.hwdone { text-align:center; padding:18px 6px 8px; display:grid; gap:12px; justify-items:center; }
+.hwdone-ic { width:84px; height:84px; border-radius:50%; display:grid; place-items:center; background:rgba(245,179,1,.15); color:#f5b301; animation:hwpop .5s ease; }
+@keyframes hwpop { from { transform:scale(.4); opacity:0; } to { transform:scale(1); opacity:1; } }
+
+.att th .atime { display:block; font-size:10px; font-weight:500; opacity:.8; margin-top:2px; white-space:nowrap; }
+.att th.future { opacity:.75; }

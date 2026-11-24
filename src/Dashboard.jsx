@@ -37,6 +37,7 @@ function AttendanceTable({ groups, gid, setGid, showArchived, to: toProp, setTo:
   const today = iso(new Date());
   const [toLocal, setToLocal] = useState(today);
   const to = toProp || toLocal;
+  const cur = data.days.includes(to) ? to : (data.days[0] || to); // the day shown for absence notes
   const setTo = setToProp || setToLocal;
   const load = () => {
     if (!gid) { setData({ days: [], students: [] }); return; }
@@ -97,9 +98,9 @@ function AttendanceTable({ groups, gid, setGid, showArchived, to: toProp, setTo:
           {active.map((g) => <option key={g.id} value={g.id}>{g.name} ({g.members})</option>)}
           {showArchived && arch.length > 0 && <optgroup label={t('archivedGroups')}>{arch.map((g) => <option key={g.id} value={g.id}>{g.name} ({g.members})</option>)}</optgroup>}
         </select>
-        <button className="dbtn ghost" onClick={() => setTo(addDays(to, -10))} aria-label={t('earlier')}><Icon name="prev" size={16} /> {t('earlier')}</button>
-        <input type="date" value={to} max={today} onChange={(e) => e.target.value && setTo(e.target.value)} aria-label={t('pickDate')} style={{ flex: '0 0 auto' }} />
-        <button className="dbtn ghost" disabled={to >= today} onClick={() => setTo(addDays(to, 10) > today ? today : addDays(to, 10))}>{t('later')} <Icon name="chevR" size={16} /></button>
+        <button className="dbtn ghost" disabled={data.scheduled && !data.prevTo} onClick={() => setTo(data.scheduled ? data.prevTo : addDays(to, -10))} aria-label={t('earlier')}><Icon name="prev" size={16} /> {t('earlier')}</button>
+        <input type="date" value={to} max={data.scheduled ? undefined : today} onChange={(e) => e.target.value && setTo(e.target.value)} aria-label={t('pickDate')} style={{ flex: '0 0 auto' }} />
+        <button className="dbtn ghost" disabled={data.scheduled ? !data.nextTo : to >= today} onClick={() => setTo(data.scheduled ? data.nextTo : (addDays(to, 10) > today ? today : addDays(to, 10)))}>{t('later')} <Icon name="chevR" size={16} /></button>
         <button className="dbtn ghost" onClick={exportCsv} disabled={!data.students.length}><Icon name="download" size={16} /> {t('exportReport')}</button>
       </div>
       <div aria-live="polite">
@@ -115,23 +116,23 @@ function AttendanceTable({ groups, gid, setGid, showArchived, to: toProp, setTo:
             <thead>
               <tr>
                 <th className="left stick"><span className="ico-inline"><Icon name="users" size={16} /> {t('students')}</span></th>
-                {days.map((d) => { const [a, b] = dayLabel(d); return <th key={d} className={'day ' + (d === today ? 'today' : '')}>{a}<br />{b}</th>; })}
+                {days.map((d) => { const [a, b] = dayLabel(d); return <th key={d} className={'day ' + (d === today ? 'today' : '') + (d > today ? ' future' : '')}>{a}<br />{b}{data.times && data.times[d] && <small className="atime">{data.times[d]}</small>}</th>; })}
               </tr>
             </thead>
             <tbody>
               {data.students.map((s, i) => (
                 <tr key={s.id}>
                   <td className="left stick"><span className="who"><em className="rown">{i + 1}</em><Ava u={s} /> <span className="nm">{s.full_name}</span>
-                    {notes[s.id + '|' + to] && <span className="notebadge" title={notes[s.id + '|' + to].caption || ''}><Icon name={NOTE_ICON[notes[s.id + '|' + to].reason]} size={13} /> {t('reason_' + notes[s.id + '|' + to].reason)}</span>}
-                    <button type="button" className="notebtn" onClick={() => openNote(s, to)} aria-label={t('absenceNote')} title={t('absenceNote')}><Icon name="note" size={14} /></button></span></td>
+                    {notes[s.id + '|' + cur] && <span className="notebadge" title={notes[s.id + '|' + cur].caption || ''}><Icon name={NOTE_ICON[notes[s.id + '|' + cur].reason]} size={13} /> {t('reason_' + notes[s.id + '|' + cur].reason)}</span>}
+                    <button type="button" className="notebtn" onClick={() => openNote(s, cur)} aria-label={t('absenceNote')} title={t('absenceNote')}><Icon name="note" size={14} /></button></span></td>
                   {days.map((d) => (
-                    <td key={d}><button className={'cell ' + (s.marks[d] || 'none') + (saving[s.id + d] ? ' saving' : '') + (notes[s.id + '|' + d] ? ' hasnote' : '')} disabled={!!saving[s.id + d]} onClick={() => mark(s, d)} aria-label={`${s.full_name} ${d}`} title={notes[s.id + '|' + d] ? `${t('reason_' + notes[s.id + '|' + d].reason)}${notes[s.id + '|' + d].caption ? ': ' + notes[s.id + '|' + d].caption : ''}` : undefined}>{ST[s.marks[d]] || ''}</button></td>
+                    <td key={d}><button className={'cell ' + (s.marks[d] || 'none') + (saving[s.id + d] ? ' saving' : '') + (notes[s.id + '|' + d] ? ' hasnote' : '')} disabled={!!saving[s.id + d] || d > today} onClick={() => mark(s, d)} aria-label={`${s.full_name} ${d}`} title={notes[s.id + '|' + d] ? `${t('reason_' + notes[s.id + '|' + d].reason)}${notes[s.id + '|' + d].caption ? ': ' + notes[s.id + '|' + d].caption : ''}` : undefined}>{ST[s.marks[d]] || ''}</button></td>
                   ))}
                 </tr>
               ))}
             </tbody>
           </table>
-          <p className="muted" style={{ marginTop: 8 }}>{t('attHint')}</p>
+          <p className="muted" style={{ marginTop: 8 }}>{data.scheduled ? t('attHintSched') : t('attHint')}</p>
         </div>
       )}
       {noteDlg && (

@@ -14,7 +14,7 @@ const upload = (file) => { const fd = new FormData(); fd.append('file', file); r
 const KIND_LABEL = { choice: 'hwKindChoice', gapfill: 'hwKindGap', complete: 'hwKindComplete', order: 'hwKindOrder', text: 'hwKindText' };
 
 /* =====================  Admin: create + manage  /  Teacher: read-only  ===================== */
-const emptyEx = (kind = 'choice') => ({ kind, question: '', options: ['', '', ''], correct: 0, answer: '' });
+const emptyEx = (kind = 'choice') => ({ kind, instruction: '', question: '', options: ['', '', ''], correct: 0, answer: '' });
 const emptyWord = () => ({ word: '', uz: '', ru: '', definition: '', example: '', imageUrl: '', imageCredit: '', imageProvider: '', imageAssetId: '', imageStyle: '', imageAttributionUrl: '', imageRef: '', pos: '', busy: false, looked: false, imgState: '', cands: [], picker: false });
 const LETTER = (i) => String.fromCharCode(65 + i);
 
@@ -34,9 +34,10 @@ function HomeworkDetail({ id, onClose, isAdmin, onDeleted }) {
         <div className="hwdetail">
           <p className="muted small">{d.group_name} · {longDay(d.due_date)}</p>
           {isAdmin && <button type="button" className="dbtn danger" onClick={del}><Icon name="trash" size={15} /> {t('remove')}</button>}
+          {isAdmin && <label className="hwswitch"><input type="checkbox" checked={d.video_enabled !== false} onChange={async (ev) => { const on = ev.target.checked; try { await api('/api/homework/' + id, { method: 'PUT', body: { videoEnabled: on } }); setD({ ...d, video_enabled: on }); } catch (x) { setErr(apiError(x)); } }} /> <span>{t('hwIncludeVideo')}</span></label>}
           {d.video_url && <p className="small"><Icon name="play" size={14} /> {t('hwPartVideo')}: <a href={media(d.video_url)} target="_blank" rel="noopener noreferrer">{d.video_url.split('/').pop()}</a>{d.video_description ? ' — ' + d.video_description : ''}</p>}
           {d.exercises.map((e, i) => (
-            <div key={e.id} className="hwex"><small className="muted">{t(KIND_LABEL[e.kind] || 'hwKindText')}</small><b>{i + 1}. {e.question}</b>
+            <div key={e.id} className="hwex"><small className="muted">{t(KIND_LABEL[e.kind] || 'hwKindText')}</small>{e.instruction && <small className="hwinstr">{e.instruction}</small>}<b>{i + 1}. {e.question}</b>
               {e.options && e.kind === 'choice' && <ul>{e.options.map((o) => <li key={o} className={o === e.answer ? 'ok' : ''}>{o}</li>)}</ul>}
               {e.options && e.kind === 'order' && <small className="muted">{e.options.join(' · ')}</small>}
               <small className="muted">{t('hwCorrect')}: <b>{e.answer}</b></small></div>
@@ -60,6 +61,11 @@ function ExerciseEditor({ x, i, setEx, remove }) {
         </select>
         <button type="button" className="dbtn ghost" onClick={() => remove(i)} aria-label={t('remove')}><Icon name="trash" size={15} /></button>
       </div>
+      {(x.kind === 'gapfill' || x.kind === 'complete') && (
+        <label className="hwinstr-ed">{t('hwInstruction')} <span className="req">*</span>
+          <textarea rows={2} value={x.instruction || ''} maxLength={300} required placeholder={x.kind === 'gapfill' ? t('hwInstrPhGap') : t('hwInstrPhComplete')} onChange={(e) => set({ instruction: e.target.value })} />
+        </label>
+      )}
       <input type="text" value={x.question} maxLength={500} placeholder={x.kind === 'gapfill' ? t('hwGapHint') : x.kind === 'order' ? t('hwOrderHint') : t('hwQuestion')} onChange={(e) => set({ question: e.target.value })} />
       {x.kind === 'choice' && (
         <>
@@ -83,6 +89,7 @@ function ExerciseEditor({ x, i, setEx, remove }) {
 
 function HomeworkForm({ groups, onCreated }) {
   const [f, setF] = useState({ groupId: '', unitNo: '', lessonNo: '', title: '', dueDate: iso(new Date()), description: '', videoUrl: '', videoDescription: '' });
+  const [videoOn, setVideoOn] = useState(false);
   const [words, setWords] = useState([]);
   const [exs, setExs] = useState([]);
   const [vBusy, setVBusy] = useState(false);
@@ -134,11 +141,13 @@ function HomeworkForm({ groups, onCreated }) {
     if (!f.unitNo || !f.lessonNo) return setErr(t('hwUnitNo') + ' / ' + t('hwLessonNo'));
     const exercises = exs.map((x) => (x.kind === 'choice'
       ? { kind: 'choice', question: x.question, options: x.options.filter((o) => o.trim()), answer: x.options[x.correct] || '' }
-      : { kind: x.kind, question: x.question, answer: x.answer }));
+      : { kind: x.kind, question: x.question, answer: x.answer, instruction: (x.kind === 'gapfill' || x.kind === 'complete') ? x.instruction : undefined }));
+    const bi = exs.findIndex((x) => (x.kind === 'gapfill' || x.kind === 'complete') && !String(x.instruction || '').trim());
+    if (bi >= 0) return setErr(`${bi + 1}. ${t('hwInstrMissing')}`);
     const wl = words.filter((w) => w.word.trim()).map((w) => ({ word: w.word, imageUrl: w.imageProvider === 'icons8' ? undefined : (w.imageUrl || undefined), imageCredit: w.imageCredit || undefined, imageProvider: w.imageProvider || undefined, imageRef: w.imageRef || undefined, pos: w.pos || undefined, imageAssetId: w.imageAssetId || undefined, imageStyle: w.imageStyle || undefined, imageAttributionUrl: w.imageAttributionUrl || undefined, definition: w.definition, example: w.example, phonetic: w.phonetic || undefined, translations: { uz: w.uz, ru: w.ru } }));
     setBusy(true);
     try {
-      await api('/api/homework', { method: 'POST', body: { groupId: Number(f.groupId), unitNo: Number(f.unitNo), lessonNo: Number(f.lessonNo), title: f.title, dueDate: f.dueDate, description: f.description, videoUrl: f.videoUrl || undefined, videoDescription: f.videoDescription, words: wl, exercises } });
+      await api('/api/homework', { method: 'POST', body: { groupId: Number(f.groupId), unitNo: Number(f.unitNo), lessonNo: Number(f.lessonNo), title: f.title, dueDate: f.dueDate, description: f.description, videoEnabled: videoOn, videoUrl: videoOn ? (f.videoUrl || undefined) : undefined, videoDescription: videoOn ? f.videoDescription : undefined, words: wl, exercises } });
       const ln = Number(f.lessonNo), un = Number(f.unitNo); // next lesson is pre-selected: 3.1 -> 3.2 -> 3.3 -> 4.1
       setF({ ...f, unitNo: ln >= 3 ? Math.min(12, un + 1) : un, lessonNo: ln >= 3 ? 1 : ln + 1, title: '', description: '', videoUrl: '', videoDescription: '' }); setWords([]); setExs([]); onCreated();
     } catch (x) { setErr(apiError(x)); }
@@ -194,12 +203,15 @@ function HomeworkForm({ groups, onCreated }) {
       <div><button type="button" className="dbtn ghost" onClick={() => setWords((l) => [...l, emptyWord()])}><Icon name="plus" size={15} /> {t('hwAddWord')}</button></div>
 
       <h4>2. {t('hwPartVideo')}</h4>
+      <label className="hwswitch"><input type="checkbox" checked={videoOn} onChange={(e) => setVideoOn(e.target.checked)} /> <span>{t('hwIncludeVideo')}</span></label>
+      {videoOn && <>
       <div className="dtools">
         <label className="dbtn ghost">{vBusy ? t('loading') : <><Icon name="play" size={15} /> {t('hwUploadVideo')}</>}<input type="file" hidden accept="video/mp4,video/webm,video/quicktime" onChange={(e) => { pickVideo(e.target.files[0]); e.target.value = ''; }} /></label>
         <input type="text" value={f.videoUrl} placeholder={t('hwVideoUrl')} onChange={set('videoUrl')} />
       </div>
       {f.videoUrl && <p className="okmsg small"><Icon name="ok" size={14} /> {f.videoUrl.split('/').pop()}</p>}
       <textarea rows={3} value={f.videoDescription} maxLength={2000} placeholder={t('hwVideoDesc')} onChange={set('videoDescription')} />
+      </>}
 
       <h4>3. {t('hwExercises')} <small className="muted">({exs.length}) · {t('hwOptional')}</small></h4>
       {exs.map((x, i) => <ExerciseEditor key={i} x={x} i={i} setEx={setEx} remove={(k) => setExs((l) => l.filter((_, j) => j !== k))} />)}
@@ -323,16 +335,17 @@ function AnswerInput({ e, val, setVal, disabled, onEnter, picked, setPicked }) {
     );
   }
   if (e.kind === 'gapfill') {
-    const parts = e.question.split('___');
+    const mm = e.question.match(/_+/);
+    const before = mm ? e.question.slice(0, mm.index) : e.question + ' ', after = mm ? e.question.slice(mm.index + mm[0].length) : '';
     return (
-      <div className="hwgap">{parts[0]}<input type="text" value={val} disabled={disabled} onChange={(x) => setVal(x.target.value)} onKeyDown={(x) => x.key === 'Enter' && onEnter()} className="gapinput" autoComplete="off" />{parts.slice(1).join('___')}</div>
+      <div className="hwgap">{before}<input type="text" value={val} disabled={disabled} onChange={(x) => setVal(x.target.value)} onKeyDown={(x) => x.key === 'Enter' && onEnter()} className="gapinput" autoComplete="off" />{after}</div>
     );
   }
   return <input type="text" value={val} disabled={disabled} onChange={(x) => setVal(x.target.value)} onKeyDown={(x) => x.key === 'Enter' && onEnter()} placeholder={t('hwYourAnswer')} autoComplete="off" />;
 }
 
 function Runner({ hw, onBack, onChanged }) {
-  const ex = hw.exercises;
+  const all = hw.exercises;
   const [ans, setAns] = useState(() => { const m = {}; hw.mine.answers.forEach((a) => { m[a.exercise_id] = a; }); return m; });
   const [keys, setKeys] = useState(hw.mine.keys_left);
   const [draft, setDraft] = useState({});   // exercise id -> { val, picked }
@@ -342,13 +355,16 @@ function Runner({ hw, onBack, onChanged }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const [reward, setReward] = useState(null);
-  const [summary, setSummary] = useState(null);
+  const [queue, setQueue] = useState(null);   // ids of the mistakes that are being repeated (null = the first round)
+  const [report, setReport] = useState(null); // { ok, bad, wrong } after "Check answers"
+  const [done, setDone] = useState(false);    // congratulations screen
   const [practice, setPractice] = useState(false); // repeating a finished unit: the server pays nothing and changes nothing
+  const ex = queue ? all.filter((x) => queue.includes(x.id)) : all;
   const isClean = (x) => !!(ans[x.id] && ans[x.id].is_correct);
   const isKeyed = (x) => !!(ans[x.id] && ans[x.id].used_key);
   const isDone = (x) => isClean(x) || isKeyed(x);
   const settled = (x) => !practice && isDone(x); // in practice mode every exercise is open again
-  const [i, setI] = useState(() => { const k = ex.findIndex((x) => !(hw.mine.answers.find((a) => a.exercise_id === x.id && (a.is_correct || a.used_key)))); return k < 0 ? 0 : k; });
+  const [i, setI] = useState(() => { const k = all.findIndex((x) => !(hw.mine.answers.find((a) => a.exercise_id === x.id && (a.is_correct || a.used_key)))); return k < 0 ? 0 : k; });
   const e = ex[i];
   const d = (e && draft[e.id]) || { val: '', picked: [] };
   const setVal = (v) => setDraft((m) => ({ ...m, [e.id]: { val: v, picked: [] } }));
@@ -358,9 +374,11 @@ function Runner({ hw, onBack, onChanged }) {
   const pending = ex.filter((x) => !settled(x) && has(x) && !(res[x.id] && res[x.id].val === draft[x.id].val)); // new or edited answers still to check
   const go = (n) => { setI(n); setErr(''); };
   const base = (x) => `/api/homework/${hw.id}/exercises/${x.id}`;
+  const last = i >= ex.length - 1;
 
+  // "Check answers" (only on the last exercise): the server checks everything, then the mistakes are repeated
   const checkAll = async () => {
-    if (busy || pending.length === 0) return; setBusy(true); setErr('');
+    if (busy || answered < ex.length) return; setBusy(true); setErr('');
     const next = {}; let rw = null;
     try {
       for (const x of pending) {
@@ -371,12 +389,22 @@ function Runner({ hw, onBack, onChanged }) {
         if (r.practice) continue;
         if (r.correct) setAns((a) => ({ ...a, [x.id]: { ...(a[x.id] || {}), exercise_id: x.id, is_correct: true } }));
       }
-    } catch (x) { setErr(apiError(x)); }
-    setRes((p) => ({ ...p, ...next })); if (rw) setReward(rw);
-    const okN = Object.values(next).filter((v) => v.ok).length;
-    setSummary({ ok: okN, bad: Object.keys(next).length - okN });
+    } catch (x) { setErr(apiError(x)); setBusy(false); return; }
+    const merged = { ...res, ...next };
+    setRes(merged); if (rw) setReward(rw);
+    const okNow = (x) => settled(x) || !!(merged[x.id] && merged[x.id].ok && draft[x.id] && merged[x.id].val === draft[x.id].val);
+    const wrong = ex.filter((x) => !okNow(x)).map((x) => x.id);
+    setReport({ ok: ex.length - wrong.length, bad: wrong.length, wrong });
+    if (wrong.length === 0) setDone(true);
     onChanged(); setBusy(false);
   };
+  const fixMistakes = () => {
+    const ids = report.wrong;
+    setDraft((m) => { const n = { ...m }; ids.forEach((id) => { delete n[id]; }); return n; });
+    setRes((m) => { const n = { ...m }; ids.forEach((id) => { delete n[id]; }); return n; });
+    setQueue(ids); setReport(null); setI(0); setErr('');
+  };
+  const again = () => { setPractice(true); setDraft({}); setRes({}); setQueue(null); setReport(null); setDone(false); setReward(null); setI(0); };
   const useKey = async () => {
     setBusy(true); setErr('');
     try {
@@ -389,41 +417,68 @@ function Runner({ hw, onBack, onChanged }) {
     } catch (x) { setErr(x.code === 'NO_KEYS' ? t('hwNoKeys') : apiError(x)); if (x.code === 'NO_KEYS') setKeys(0); }
     setBusy(false); setKeyDlg(false);
   };
-  const okCount = ex.filter(isClean).length;
-  const finished = ex.length > 0 && ex.every(isDone);
-  const rs = e && res[e.id] && res[e.id].val === d.val ? res[e.id] : null;
+  const okCount = all.filter(isClean).length;
+  const finished = all.length > 0 && all.every(isDone);
+
+  if (done) return (
+    <div className="dcard">
+      <div className="hwtop"><Back onClick={onBack} /></div>
+      <RewardBanner r={reward} />
+      <div className="hwdone">
+        <div className="hwdone-ic"><Icon name="trophy" size={44} /></div>
+        <h2>{t('hwCongrats')}</h2>
+        <p className="muted">{t('hwCongratsText')}</p>
+        <div className="vstats"><div><b>{all.length}</b><small>{t('hwTasks')}</small></div><div className="ok"><b>{all.length}</b><small>{t('correctN')}</small></div></div>
+        <div className="acts" style={{ justifyContent: 'center' }}>
+          <button type="button" className="dbtn startbtn" onClick={onBack}>{t('hwBackToUnit')}</button>
+          <button type="button" className="dbtn ghost" onClick={again}><Icon name="undo" size={15} /> {t('practiceAgain')}</button>
+        </div>
+      </div>
+    </div>
+  );
+  if (report && report.bad > 0) return (
+    <div className="dcard">
+      <div className="hwtop"><Back onClick={onBack} /></div>
+      <RewardBanner r={reward} />
+      <div className="hwdone">
+        <h2>{t('hwRoundDone')}</h2>
+        <div className="vstats"><div className="ok"><b>{report.ok}</b><small>{t('correctN')}</small></div><div className="bad"><b>{report.bad}</b><small>{t('incorrectN')}</small></div></div>
+        <p className="muted">{t('hwMistakesNote')}</p>
+        <div className="acts" style={{ justifyContent: 'center' }}><button type="button" className="dbtn startbtn" onClick={fixMistakes}>{t('fixMistakes')} ({report.bad})</button></div>
+      </div>
+    </div>
+  );
   return (
     <div className="dcard">
       <div className="hwtop"><Back onClick={onBack} />
         <button type="button" className="keychip click" onClick={() => setKeyDlg(true)} title={t('hwKeys')} aria-label={t('hwUseKeyTitle')}><Icon name="key" size={18} /> {keys}</button></div>
       <RewardBanner r={reward} />
-      {finished && !practice && <div className="dnote"><b>{t('hwFinished')}</b> · {t('hwResult')}: {Math.round((okCount / ex.length) * 100)}% <button type="button" className="dbtn ghost" style={{ marginLeft: 10 }} onClick={() => { setPractice(true); setDraft({}); setRes({}); setSummary(null); setReward(null); setI(0); }}><Icon name="undo" size={15} /> {t('practiceAgain')}</button></div>}
-      {practice && <div className="dnote"><Icon name="info" size={15} /> {t('practiceNote')}</div>}
-      {summary && !finished && <div className="dnote">{t('hwChecked')}: <b className="okmsg">{summary.ok} {t('hwCorrectN')}</b> · <b className="err">{summary.bad} {t('hwWrongN')}</b> — {t('hwEditRecheck')}</div>}
+      {finished && !practice && !queue && <div className="dnote"><b>{t('hwFinished')}</b> · {t('hwResult')}: {Math.round((okCount / all.length) * 100)}% <button type="button" className="dbtn ghost" style={{ marginLeft: 10 }} onClick={again}><Icon name="undo" size={15} /> {t('practiceAgain')}</button></div>}
+      {practice && !queue && <div className="dnote"><Icon name="info" size={15} /> {t('practiceNote')}</div>}
+      {queue && <div className="dnote"><Icon name="info" size={15} /> {t('hwMistakesRound')}: <b>{queue.length}</b></div>}
       <div className="hwdots">{ex.map((x, k) => {
-        const r = res[x.id] && draft[x.id] && res[x.id].val === draft[x.id].val ? res[x.id] : null;
-        const st = practice ? (r ? (r.ok ? 'ok' : 'bad') : has(x) ? 'filled' : '') : (isKeyed(x) ? 'key' : isClean(x) ? 'ok' : r && !r.ok ? 'bad' : has(x) ? 'filled' : '');
+        const st = practice || queue ? (has(x) ? 'filled' : '') : (isKeyed(x) ? 'key' : isClean(x) ? 'ok' : has(x) ? 'filled' : '');
         return <button key={x.id} type="button" className={(k === i ? 'cur ' : '') + st} onClick={() => go(k)} aria-label={String(k + 1)}>{k + 1}</button>;
       })}</div>
       {e && (
         <div className="hwq">
           <p className="muted small">{i + 1} / {ex.length} · {t(KIND_LABEL[e.kind] || 'hwKindText')}</p>
+          {e.instruction && <p className="hwinstr">{e.instruction}</p>}
           {e.kind !== 'gapfill' && <h3>{e.question}</h3>}
-          <AnswerInput e={e} val={d.val} setVal={setVal} disabled={isClean(e) && !practice} onEnter={() => i < ex.length - 1 && go(i + 1)} picked={d.picked} setPicked={setPicked} />
-          {isClean(e) && !practice && <p className="okmsg"><Icon name="ok" size={16} /> {t('hwCorrectMsg')}</p>}
-          {rs && rs.ok && (practice || !isClean(e)) && <p className="okmsg"><Icon name="ok" size={16} /> {t('hwCorrectMsg')}</p>}
-          {rs && !rs.ok && <p className="err"><Icon name="alert" size={16} /> {t('hwWrongMsg')}</p>}
+          <AnswerInput e={e} val={d.val} setVal={setVal} disabled={isClean(e) && !practice && !queue} onEnter={() => !last && go(i + 1)} picked={d.picked} setPicked={setPicked} />
+          {isClean(e) && !practice && !queue && <p className="okmsg"><Icon name="ok" size={16} /> {t('hwCorrectMsg')}</p>}
           {isKeyed(e) && !practice && <p className="hwreveal"><Icon name="key" size={16} /> {t('hwAnswerIs')}: <b>{shown[e.id] || '—'}</b></p>}
           {err && <div className="err">{err}</div>}
-          <div className="acts">
-            {i > 0 && <button className="dbtn ghost" onClick={() => go(i - 1)}><Icon name="prev" size={16} /></button>}
-            {i < ex.length - 1 && <button className="dbtn ghost" onClick={() => go(i + 1)}>{t('hwNext')} <Icon name="chevR" size={16} /></button>}
-          </div>
         </div>
       )}
       <div className="hwcheckbar">
         <span className="muted small">{answered} / {ex.length} {t('hwAnswered')}</span>
-        <button className="dbtn startbtn" disabled={busy || pending.length === 0} onClick={checkAll}><Icon name="ok" size={16} /> {busy ? t('loading') : t('hwCheckAll')}</button>
+        <span className="hwnav">
+          {i > 0 && <button type="button" className="dbtn ghost" onClick={() => go(i - 1)} aria-label={t('back')}><Icon name="prev" size={16} /></button>}
+          {!last
+            ? <button type="button" className="dbtn" onClick={() => go(i + 1)}>{t('hwNext')} <Icon name="chevR" size={16} /></button>
+            : <button type="button" className="dbtn startbtn" disabled={busy || answered < ex.length || (pending.length === 0 && !ex.some((x) => !settled(x)))} onClick={checkAll}><Icon name="ok" size={16} /> {busy ? t('loading') : t('hwCheckAll')}</button>}
+        </span>
       </div>
       {keyDlg && e && (
         <Modal title={<span className="ico-inline"><Icon name="key" size={18} /> {t('hwUseKeyTitle')}</span>} onClose={() => setKeyDlg(false)}>
