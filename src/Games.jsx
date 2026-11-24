@@ -110,17 +110,23 @@ function Scramble({ words, onBack }) {
 
 const GAMES = { gWordMatch: Match, gQuickQuiz: Quiz, gScramble: Scramble };
 
-export default function Games({ game, onBack }) {
-  const key = GAMES[game] ? game : 'gWordMatch';
+export default function Games({ game, onBack, onPick, onVocab }) {
+  const key = GAMES[game] ? game : null;
   const [words, setWords] = useState(null); const [err, setErr] = useState('');
-  useEffect(() => { api('/api/homework/game-words').then((r) => setWords(r.words || [])).catch((e) => { setErr(apiError(e)); setWords([]); }); }, []);
+  useEffect(() => { if (!key) return; api('/api/homework/game-words').then((r) => setWords(r.words || [])).catch((e) => { setErr(apiError(e)); setWords([]); }); }, [key]);
+  if (!key) return (
+    <div className="dcard gm">
+      <div className="hwtop"><h3 className="hwtitle">{t('gmPick')}</h3></div>
+      <div className="gm-hub">{[['gWordMatch', 'target'], ['gQuickQuiz', 'zap'], ['gScramble', 'shuffle']].map(([k, ic]) => <button key={k} type="button" onClick={() => onPick && onPick(k)}><Icon name={ic} size={34} />{t(k)}</button>)}</div>
+    </div>
+  );
   const G = GAMES[key];
   return (
     <div className="dcard gm">
       <div className="hwtop"><h3 className="hwtitle">{t(key)}</h3></div>
       {err && <div className="err">{err}</div>}
       {words === null ? <p className="muted">{t('loading')}</p>
-        : words.length < 3 ? <p className="muted">{t('gmNoWords')}</p>
+        : words.length < 3 ? <><p className="muted">{t('gmNoWords')}</p>{onVocab && <button type="button" className="dbtn" onClick={onVocab}>{t('gmOpenVocab')}</button>}</>
         : <G words={words} onBack={onBack} />}
     </div>
   );

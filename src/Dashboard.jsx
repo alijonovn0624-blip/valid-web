@@ -515,7 +515,7 @@ export default function Dashboard({ user, StoryForm, EventForm, Feed, StudentHom
           {isStudent && page === 'homework' && <StudentHomework me={user} onDeep={onHwDeep} />}
           {isStudent && page === 'vocab' && <VocabStudent />}
           {isAdmin && page === 'vocab' && <VocabAdmin />}
-          {isStudent && page === 'games' && <Games game={params.game} onBack={goBack} />}
+          {isStudent && page === 'games' && <Games game={params.game} onBack={goBack} onPick={(k) => navTo('games', { game: k })} onVocab={() => navTo('vocab')} />}
           {isStudent && page === 'events' && <EventsAllPage />}
           {isStudent && page === 'ranking' && StudentRanking && <StudentRanking me={user} />}
           {isStudent && page === 'points' && <StudentRewards mode="points" />}
@@ -541,10 +541,9 @@ export default function Dashboard({ user, StoryForm, EventForm, Feed, StudentHom
       </main>
       {(
         <nav className="dbnav" aria-label="Main">
-          {(isStudent ? ['home', 'events', 'homework', 'profile'] : isAdmin ? ['home', 'students', 'attendance', 'groups', 'profile'] : ['home', 'students', 'attendance', 'homework', 'profile']).map((k) => (
-            <button key={k} type="button" className={navActive === k ? 'on' : ''} onClick={() => (k === 'community' ? onChat() : go(k))}>{k === 'profile' ? <Icon name="user" size={24} /> : <AppIcon name={k} size={26} />}<span>{t(k)}</span></button>
+          {(isStudent ? ['home', 'homework', 'ranking', 'games', 'profile'] : isAdmin ? ['home', 'students', 'attendance', 'groups', 'profile'] : ['home', 'students', 'attendance', 'homework', 'profile']).map((k) => (
+            <button key={k} type="button" className={navActive === k ? 'on' : ''} onClick={() => (k === 'community' ? onChat() : go(k))}>{k === 'profile' ? <Icon name="user" size={24} /> : k === 'games' ? <Icon name="gamepad" size={26} /> : <AppIcon name={k} size={26} />}<span>{t(k)}</span></button>
           ))}
-          {isStudent && <button type="button" onClick={() => setSide(true)}><Icon name="menu" size={22} /><span>{t('more')}</span></button>}
         </nav>
       )}
 

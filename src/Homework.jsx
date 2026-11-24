@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api, API } from './api';
 import { Icon } from './icons.jsx';
+import { VocabCelebration, MissionComplete } from './Celebrate.jsx';
 import { t, apiError } from './i18n.js';
 import { iso, longDay, dayLabel, Ava } from './ui.jsx';
 import { Modal, MistakesModal } from './Pages.jsx';
@@ -17,6 +18,27 @@ const KIND_LABEL = { choice: 'hwKindChoice', gapfill: 'hwKindGap', complete: 'hw
 const emptyEx = (kind = 'choice') => ({ kind, instruction: '', question: '', options: ['', '', ''], correct: 0, answer: '' });
 const emptyWord = () => ({ word: '', uz: '', ru: '', definition: '', example: '', imageUrl: '', imageCredit: '', imageProvider: '', imageAssetId: '', imageStyle: '', imageAttributionUrl: '', imageRef: '', pos: '', busy: false, looked: false, imgState: '', cands: [], picker: false });
 const LETTER = (i) => String.fromCharCode(65 + i);
+
+function UnlockPanel({ id }) {
+  const [rows, setRows] = useState(null); const [err, setErr] = useState('');
+  const load = () => api(`/api/homework/${id}/unlocks`).then((r) => setRows(r.students)).catch((x) => setErr(apiError(x)));
+  useEffect(() => { load(); }, [id]);
+  const flip = async (s) => {
+    try { await api(`/api/homework/${id}/unlocks`, { method: 'PUT', body: { studentId: s.id, unlocked: !s.unlocked } }); setRows((a) => a.map((x) => (x.id === s.id ? { ...x, unlocked: !x.unlocked } : x))); }
+    catch (x) { setErr(apiError(x)); }
+  };
+  return (
+    <div className="unl">
+      <h4><Icon name="lock" size={16} /> {t('hwUnlockTitle')}</h4>
+      <p className="muted small">{t('hwUnlockNote')}</p>
+      {err && <div className="err">{err}</div>}
+      <div className="unl-list">{(rows || []).map((s) => (
+        <div key={s.id} className={'unl-row ' + (s.unlocked ? 'on' : '')}><span>{s.full_name}</span>
+          <label className="hwswitch"><input type="checkbox" checked={s.unlocked} onChange={() => flip(s)} /> <span>{s.unlocked ? t('hwUnlockOpen') : t('hwUnlockLocked')}</span></label></div>
+      ))}</div>
+    </div>
+  );
+}
 
 function HomeworkDetail({ id, onClose, isAdmin, onDeleted }) {
   const [d, setD] = useState(null);
@@ -35,6 +57,7 @@ function HomeworkDetail({ id, onClose, isAdmin, onDeleted }) {
           <p className="muted small">{d.group_name} · {longDay(d.due_date)}</p>
           {isAdmin && <button type="button" className="dbtn danger" onClick={del}><Icon name="trash" size={15} /> {t('remove')}</button>}
           {isAdmin && <label className="hwswitch"><input type="checkbox" checked={d.video_enabled !== false} onChange={async (ev) => { const on = ev.target.checked; try { await api('/api/homework/' + id, { method: 'PUT', body: { videoEnabled: on } }); setD({ ...d, video_enabled: on }); } catch (x) { setErr(apiError(x)); } }} /> <span>{t('hwIncludeVideo')}</span></label>}
+          {isAdmin && <UnlockPanel id={id} />}
           {d.video_url && <p className="small"><Icon name="play" size={14} /> {t('hwPartVideo')}: <a href={media(d.video_url)} target="_blank" rel="noopener noreferrer">{d.video_url.split('/').pop()}</a>{d.video_description ? ' — ' + d.video_description : ''}</p>}
           {d.exercises.map((e, i) => (
             <div key={e.id} className="hwex"><small className="muted">{t(KIND_LABEL[e.kind] || 'hwKindText')}</small>{e.instruction && <small className="hwinstr">{e.instruction}</small>}<b>{i + 1}. {e.question}</b>
@@ -358,6 +381,7 @@ function Runner({ hw, onBack, onChanged }) {
   const [queue, setQueue] = useState(null);   // ids of the mistakes that are being repeated (null = the first round)
   const [report, setReport] = useState(null); // { ok, bad, wrong } after "Check answers"
   const [done, setDone] = useState(false);    // congratulations screen
+  const [first, setFirst] = useState(null);     // result of the first check (for the final statistics)
   const [practice, setPractice] = useState(false); // repeating a finished unit: the server pays nothing and changes nothing
   const ex = queue ? all.filter((x) => queue.includes(x.id)) : all;
   const isClean = (x) => !!(ans[x.id] && ans[x.id].is_correct);
@@ -395,6 +419,7 @@ function Runner({ hw, onBack, onChanged }) {
     const okNow = (x) => settled(x) || !!(merged[x.id] && merged[x.id].ok && draft[x.id] && merged[x.id].val === draft[x.id].val);
     const wrong = ex.filter((x) => !okNow(x)).map((x) => x.id);
     setReport({ ok: ex.length - wrong.length, bad: wrong.length, wrong });
+    if (!queue && !first) setFirst({ ok: ex.length - wrong.length, total: ex.length });
     if (wrong.length === 0) setDone(true);
     onChanged(); setBusy(false);
   };
@@ -404,7 +429,7 @@ function Runner({ hw, onBack, onChanged }) {
     setRes((m) => { const n = { ...m }; ids.forEach((id) => { delete n[id]; }); return n; });
     setQueue(ids); setReport(null); setI(0); setErr('');
   };
-  const again = () => { setPractice(true); setDraft({}); setRes({}); setQueue(null); setReport(null); setDone(false); setReward(null); setI(0); };
+  const again = () => { setPractice(true); setDraft({}); setRes({}); setQueue(null); setReport(null); setDone(false); setFirst(null); setReward(null); setI(0); };
   const useKey = async () => {
     setBusy(true); setErr('');
     try {
@@ -420,22 +445,7 @@ function Runner({ hw, onBack, onChanged }) {
   const okCount = all.filter(isClean).length;
   const finished = all.length > 0 && all.every(isDone);
 
-  if (done) return (
-    <div className="dcard">
-      <div className="hwtop"><Back onClick={onBack} /></div>
-      <RewardBanner r={reward} />
-      <div className="hwdone">
-        <div className="hwdone-ic"><Icon name="trophy" size={44} /></div>
-        <h2>{t('hwCongrats')}</h2>
-        <p className="muted">{t('hwCongratsText')}</p>
-        <div className="vstats"><div><b>{all.length}</b><small>{t('hwTasks')}</small></div><div className="ok"><b>{all.length}</b><small>{t('correctN')}</small></div></div>
-        <div className="acts" style={{ justifyContent: 'center' }}>
-          <button type="button" className="dbtn startbtn" onClick={onBack}>{t('hwBackToUnit')}</button>
-          <button type="button" className="dbtn ghost" onClick={again}><Icon name="undo" size={15} /> {t('practiceAgain')}</button>
-        </div>
-      </div>
-    </div>
-  );
+  if (done) return <MissionComplete total={first ? first.total : all.length} correct={first ? first.ok : all.length} onContinue={onBack} />;
   if (report && report.bad > 0) return (
     <div className="dcard">
       <div className="hwtop"><Back onClick={onBack} /></div>
@@ -456,10 +466,6 @@ function Runner({ hw, onBack, onChanged }) {
       {finished && !practice && !queue && <div className="dnote"><b>{t('hwFinished')}</b> · {t('hwResult')}: {Math.round((okCount / all.length) * 100)}% <button type="button" className="dbtn ghost" style={{ marginLeft: 10 }} onClick={again}><Icon name="undo" size={15} /> {t('practiceAgain')}</button></div>}
       {practice && !queue && <div className="dnote"><Icon name="info" size={15} /> {t('practiceNote')}</div>}
       {queue && <div className="dnote"><Icon name="info" size={15} /> {t('hwMistakesRound')}: <b>{queue.length}</b></div>}
-      <div className="hwdots">{ex.map((x, k) => {
-        const st = practice || queue ? (has(x) ? 'filled' : '') : (isKeyed(x) ? 'key' : isClean(x) ? 'ok' : has(x) ? 'filled' : '');
-        return <button key={x.id} type="button" className={(k === i ? 'cur ' : '') + st} onClick={() => go(k)} aria-label={String(k + 1)}>{k + 1}</button>;
-      })}</div>
       {e && (
         <div className="hwq">
           <p className="muted small">{i + 1} / {ex.length} · {t(KIND_LABEL[e.kind] || 'hwKindText')}</p>
@@ -522,6 +528,7 @@ function VocabFlow({ hw, onBack, onChanged }) {
   const [cur, setCur] = useState(0);
   const [typed, setTyped] = useState('');
   const [fb, setFb] = useState(null); // null | 'ok' | 'bad'
+  const [cele, setCele] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const [saved, setSaved] = useState({});
@@ -557,12 +564,13 @@ function VocabFlow({ hw, onBack, onChanged }) {
   };
   const fix = () => { const todo = wrongWords(); setMode('fix'); setCards(todo); setIdx(0); setPhase('cards'); };
   const finish = async () => {
-    if (practice) { onBack(); return; } // a repeat of a finished unit pays nothing and changes nothing
+    if (practice) { setCele(true); return; } // a repeat of a finished unit pays nothing and changes nothing
     setBusy(true); setErr('');
-    try { await api(`/api/homework/${hw.id}/words/finish`, { method: 'POST' }); onChanged(); onBack(); }
+    try { await api(`/api/homework/${hw.id}/words/finish`, { method: 'POST' }); onChanged(); setCele(true); setBusy(false); }
     catch (x) { setErr(apiError(x)); setBusy(false); }
   };
   const nCorrect = words.filter((x) => correct.has(x.id)).length;
+  if (cele) return <VocabCelebration total={words.length} correct={nCorrect} onContinue={onBack} />;
   return (
     <div className="dcard">
       <div className="hwtop"><Back onClick={onBack} /><h3 className="hwtitle">{t('hwPartVocab')}</h3></div>
