@@ -6,71 +6,104 @@ const reduced = () => typeof window !== 'undefined' && window.matchMedia && wind
 const rnd = (a, b) => a + Math.random() * (b - a);
 const COLORS = ['#ffd23f', '#ff5d8f', '#4cc9f0', '#7cf29a', '#b388ff', '#ff9f43', '#ffffff'];
 
-/* Vocabulary Test: golden trophy + confetti from both sides + falling ribbons + fireworks + sparkles (canvas, lightweight) */
-export function VocabCelebration({ total, correct, onContinue }) {
+/* Vocabulary Test result: pass -> golden trophy + ribbons/confetti falling and bursting from both sides + sparkles; fail -> big sad sticker, the actual result and "try again" */
+const GOLD = ['#ffd23f', '#f5b301', '#ffe58a'], SILVER = ['#eef2ff', '#c3cce6'], BLUE = ['#4cc9f0', '#3b82ff', '#8fb4ff'], MIX = ['#ff5d8f', '#7cf29a', '#b388ff', '#ff9f43'];
+const pick = (a) => a[(Math.random() * a.length) | 0];
+const confColor = () => { const r = Math.random(); return r < 0.4 ? pick(GOLD) : r < 0.6 ? pick(SILVER) : r < 0.82 ? pick(BLUE) : pick(MIX); };
+
+export function VocabCelebration({ pass = true, total, correct, min, onContinue, onRetry }) {
   const cv = useRef(null);
-  const sp = useRef(Array.from({ length: 26 }, () => ({ x: rnd(2, 98), y: rnd(4, 96), s: rnd(8, 18), d: rnd(0, 3), t: rnd(1.4, 3) })));
+  const sp = useRef(Array.from({ length: pass ? 22 : 0 }, () => ({ x: rnd(2, 98), y: rnd(4, 96), s: rnd(8, 18), d: rnd(0, 3), t: rnd(1.4, 3) })));
   useEffect(() => {
-    const c = cv.current; if (!c || reduced()) return undefined;
-    const ctx = c.getContext('2d'); let W = 0, H = 0, raf = 0, last = performance.now();
-    const fit = () => { const r = c.getBoundingClientRect(), dpr = Math.min(window.devicePixelRatio || 1, 2); W = r.width; H = r.height; c.width = W * dpr; c.height = H * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0); };
+    const c = cv.current; if (!pass || !c || reduced()) return undefined;
+    const small = window.innerWidth < 700, MAX = small ? 110 : 220;
+    const ctx = c.getContext('2d'); let W = 0, H = 0, raf = 0, last = performance.now(), run = true;
+    const fit = () => { const r = c.getBoundingClientRect(), dpr = Math.min(window.devicePixelRatio || 1, 1.5); W = r.width; H = r.height; c.width = W * dpr; c.height = H * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0); };
     fit(); window.addEventListener('resize', fit);
-    const conf = [], rib = [], fw = [];
-    const burst = (side) => { // confetti shot from the lower sides toward the middle
-      for (let i = 0; i < 46; i++) { const a = (side < 0 ? rnd(-1.25, -0.55) : rnd(-2.6, -1.9)); const v = rnd(7, 15);
-        conf.push({ x: side < 0 ? 0 : W, y: H * 0.78, vx: Math.cos(a) * v * (side < 0 ? 1 : 1), vy: Math.sin(a) * v, w: rnd(6, 11), h: rnd(4, 8), r: rnd(0, 6), vr: rnd(-0.3, 0.3), c: COLORS[(Math.random() * COLORS.length) | 0], life: 1 }); }
-      for (let i = 0; i < 7; i++) { const a = (side < 0 ? rnd(-1.1, -0.6) : rnd(-2.5, -2.0)); const v = rnd(8, 14);
-        rib.push({ x: side < 0 ? 0 : W, y: H * 0.78, vx: Math.cos(a) * v, vy: Math.sin(a) * v, len: rnd(70, 130), ph: rnd(0, 6), c: COLORS[(Math.random() * 6) | 0], life: 1 }); }
+    const conf = [], rib = [];
+    const burst = (side) => { // confetti + ribbons shot from the lower sides toward the middle
+      const n = small ? 22 : 38;
+      for (let i = 0; i < n; i++) { const a = side < 0 ? rnd(-1.25, -0.5) : rnd(-2.65, -1.9), v = rnd(8, 15);
+        conf.push({ x: side < 0 ? 0 : W, y: H * 0.8, vx: Math.cos(a) * v, vy: Math.sin(a) * v, w: rnd(6, 11), h: rnd(4, 8), r: rnd(0, 6), vr: rnd(-0.3, 0.3), c: confColor(), life: 1, fall: false }); }
+      for (let i = 0; i < 4; i++) { const a = side < 0 ? rnd(-1.1, -0.6) : rnd(-2.5, -2.0), v = rnd(9, 14);
+        rib.push({ x: side < 0 ? 0 : W, y: H * 0.8, vx: Math.cos(a) * v, vy: Math.sin(a) * v, ph: rnd(0, 6), c: confColor(), life: 1, fall: false }); }
     };
-    const boom = () => { const x = rnd(W * 0.12, W * 0.88), y = rnd(H * 0.1, H * 0.45), col = COLORS[(Math.random() * 6) | 0];
-      for (let i = 0; i < 46; i++) { const a = (i / 46) * Math.PI * 2, v = rnd(1.5, 4.6); fw.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, c: Math.random() < 0.3 ? '#ffffff' : col, life: 1 }); } };
-    burst(-1); burst(1); boom();
-    let tf = 0;
+    const drop = () => { // continuous fall from the top
+      conf.push({ x: rnd(0, W), y: -12, vx: rnd(-0.6, 0.6), vy: rnd(1.6, 3.4), w: rnd(6, 11), h: rnd(4, 8), r: rnd(0, 6), vr: rnd(-0.18, 0.18), c: confColor(), life: 1, fall: true, ph: rnd(0, 6) }); };
+    const ribbon = () => { rib.push({ x: rnd(0, W), y: -30, vx: 0, vy: rnd(1.8, 3), ph: rnd(0, 6), c: confColor(), life: 1, fall: true }); };
+    burst(-1); burst(1);
+    let tSpawn = 0, tRib = 0, tBurst = 0;
     const loop = (now) => {
-      const dt = Math.min(48, now - last) / 16.7; last = now; tf += dt * 16.7;
+      if (!run) return;
+      const dt = Math.min(48, now - last) / 16.7, ms = dt * 16.7; last = now;
       ctx.clearRect(0, 0, W, H);
-      if (tf > 700) { tf = 0; boom(); if (Math.random() < 0.5) burst(Math.random() < 0.5 ? -1 : 1); }
-      for (const p of fw) { p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 0.035 * dt; p.vx *= 0.985; p.life -= 0.011 * dt; if (p.life > 0) { ctx.globalAlpha = Math.max(0, p.life); ctx.fillStyle = p.c; ctx.shadowBlur = 8; ctx.shadowColor = p.c; ctx.beginPath(); ctx.arc(p.x, p.y, 2.2, 0, 7); ctx.fill(); } }
-      ctx.shadowBlur = 0;
-      for (const p of rib) { p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 0.22 * dt; p.vx *= 0.985; p.ph += 0.16 * dt; p.life -= 0.0042 * dt;
-        if (p.life > 0) { ctx.globalAlpha = Math.min(1, p.life * 1.6); ctx.strokeStyle = p.c; ctx.lineWidth = 5; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(p.x, p.y);
-          for (let k = 1; k <= 6; k++) ctx.lineTo(p.x - p.vx * k * 2.2 + Math.sin(p.ph + k) * 9, p.y - p.vy * k * 2.2 + k * 3); ctx.stroke(); } }
-      for (const p of conf) { p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 0.3 * dt; p.vx *= 0.99; p.r += p.vr * dt; p.life -= 0.006 * dt;
-        if (p.life > 0 && p.y < H + 20) { ctx.globalAlpha = Math.min(1, p.life * 2); ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.r); ctx.fillStyle = p.c; ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h); ctx.restore(); } }
+      tSpawn += ms; tRib += ms; tBurst += ms;
+      while (tSpawn > (small ? 110 : 60)) { tSpawn -= (small ? 110 : 60); if (conf.length < MAX) drop(); }
+      if (tRib > (small ? 1100 : 750)) { tRib = 0; if (rib.length < 14) ribbon(); }
+      if (tBurst > 3200) { tBurst = 0; burst(-1); burst(1); }
+      for (const p of rib) {
+        p.ph += 0.12 * dt; p.x += (p.fall ? Math.sin(p.ph) * 0.7 : p.vx * dt); p.y += p.vy * dt;
+        if (p.fall) { p.vy = Math.min(p.vy, 3.2); } else { p.vy += 0.2 * dt; p.vx *= 0.985; p.life -= 0.0045 * dt; }
+        if (p.life > 0) { ctx.globalAlpha = Math.min(1, p.life * 1.6); ctx.strokeStyle = p.c; ctx.lineWidth = 6; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(p.x, p.y);
+          for (let k = 1; k <= 7; k++) ctx.lineTo(p.x + Math.sin(p.ph + k * 0.7) * 11 - (p.fall ? 0 : p.vx * k * 1.6), p.y - (p.fall ? k * 9 : p.vy * k * 1.6)); ctx.stroke(); }
+      }
+      for (const p of conf) {
+        p.r += p.vr * dt;
+        if (p.fall) { p.ph += 0.05 * dt; p.x += Math.sin(p.ph) * 0.8; p.y += p.vy * dt; } else { p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 0.28 * dt; p.vx *= 0.99; p.life -= 0.0055 * dt; }
+        if (p.life > 0) { ctx.globalAlpha = Math.min(1, p.life * 2); ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.r); ctx.scale(1, Math.cos(p.r * 1.7)); ctx.fillStyle = p.c; ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h); ctx.restore(); }
+      }
       ctx.globalAlpha = 1;
-      for (let i = fw.length - 1; i >= 0; i--) if (fw[i].life <= 0) fw.splice(i, 1);
-      for (let i = rib.length - 1; i >= 0; i--) if (rib[i].life <= 0) rib.splice(i, 1);
-      for (let i = conf.length - 1; i >= 0; i--) if (conf[i].life <= 0 || conf[i].y > H + 30) conf.splice(i, 1);
+      for (let i = rib.length - 1; i >= 0; i--) if (rib[i].life <= 0 || rib[i].y > H + 90) rib.splice(i, 1);
+      for (let i = conf.length - 1; i >= 0; i--) if (conf[i].life <= 0 || conf[i].y > H + 20) conf.splice(i, 1);
       raf = requestAnimationFrame(loop);
     };
     raf = requestAnimationFrame(loop);
-    return () => { cancelAnimationFrame(raf); window.removeEventListener('resize', fit); };
-  }, []);
+    const vis = () => { if (document.hidden) { run = false; cancelAnimationFrame(raf); } else if (!run) { run = true; last = performance.now(); raf = requestAnimationFrame(loop); } };
+    document.addEventListener('visibilitychange', vis);
+    return () => { run = false; cancelAnimationFrame(raf); window.removeEventListener('resize', fit); document.removeEventListener('visibilitychange', vis); };
+  }, [pass]);
   const bad = total - correct;
   return (
-    <div className="cel" role="dialog" aria-modal="true">
-      <canvas ref={cv} className="cel-cv" />
+    <div className={'cel' + (pass ? '' : ' fail')} role="dialog" aria-modal="true">
+      <div className="cel-rays" />
+      {pass && <canvas ref={cv} className="cel-cv" />}
       {sp.current.map((s, i) => <i key={i} className="cel-sp" style={{ left: s.x + '%', top: s.y + '%', width: s.s, height: s.s, animationDelay: s.d + 's', animationDuration: s.t + 's' }} />)}
       <div className="cel-box">
-        <div className="cel-trophy">
-          <span className="cel-glow" />
-          <svg viewBox="0 0 120 130" width="150" height="162" aria-hidden="true">
-            <defs><linearGradient id="tg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#fff3a8" /><stop offset=".45" stopColor="#ffc21a" /><stop offset="1" stopColor="#d98200" /></linearGradient></defs>
-            <path d="M28 14h64v34c0 20-14 34-32 34S28 68 28 48z" fill="url(#tg)" />
-            <path d="M28 22H10c0 20 8 34 24 38M92 22h18c0 20-8 34-24 38" fill="none" stroke="url(#tg)" strokeWidth="7" strokeLinecap="round" />
-            <rect x="53" y="80" width="14" height="22" fill="url(#tg)" /><rect x="36" y="100" width="48" height="10" rx="4" fill="url(#tg)" /><rect x="30" y="110" width="60" height="9" rx="4" fill="#c27400" />
-            <path d="M60 28l6 13 14 2-10 10 3 14-13-7-13 7 3-14-10-10 14-2z" fill="#fff7cc" />
-          </svg>
-        </div>
-        <h1 className="cel-title">{t('celTitle')}</h1>
-        <p className="cel-sub"><Icon name="ok" size={20} /> {t('celVocabDone')}</p>
-        <p className="cel-msg">{t('celMotivation')}</p>
+        {pass ? (
+          <div className="cel-trophy">
+            <span className="cel-glow" />
+            <svg viewBox="0 0 120 130" width="150" height="162" aria-hidden="true">
+              <defs><linearGradient id="tg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#fff3a8" /><stop offset=".45" stopColor="#ffc21a" /><stop offset="1" stopColor="#d98200" /></linearGradient></defs>
+              <path d="M28 14h64v34c0 20-14 34-32 34S28 68 28 48z" fill="url(#tg)" />
+              <path d="M28 22H10c0 20 8 34 24 38M92 22h18c0 20-8 34-24 38" fill="none" stroke="url(#tg)" strokeWidth="7" strokeLinecap="round" />
+              <rect x="53" y="80" width="14" height="22" fill="url(#tg)" /><rect x="36" y="100" width="48" height="10" rx="4" fill="url(#tg)" /><rect x="30" y="110" width="60" height="9" rx="4" fill="#c27400" />
+              <path d="M60 28l6 13 14 2-10 10 3 14-13-7-13 7 3-14-10-10 14-2z" fill="#fff7cc" />
+            </svg>
+          </div>
+        ) : (
+          <div className="cel-sad" aria-hidden="true">
+            <svg viewBox="0 0 160 160" width="190" height="190">
+              <defs><radialGradient id="sg" cx=".38" cy=".3" r=".85"><stop offset="0" stopColor="#ffe98a" /><stop offset=".6" stopColor="#ffc21a" /><stop offset="1" stopColor="#e08a00" /></radialGradient></defs>
+              <circle cx="80" cy="80" r="72" fill="url(#sg)" stroke="#ffffff55" strokeWidth="4" />
+              <path d="M42 68l26-14M118 68l-26-14" stroke="#5a3a00" strokeWidth="7" strokeLinecap="round" />
+              <ellipse cx="56" cy="78" rx="8" ry="10" fill="#3b2500" /><ellipse cx="104" cy="78" rx="8" ry="10" fill="#3b2500" />
+              <circle cx="58.5" cy="74" r="2.6" fill="#fff" /><circle cx="106.5" cy="74" r="2.6" fill="#fff" />
+              <path d="M54 124c8-14 44-14 52 0" fill="none" stroke="#3b2500" strokeWidth="8" strokeLinecap="round" />
+              <path className="cel-tear" d="M104 92c7 10 11 16 11 21a11 11 0 0 1-22 0c0-5 4-11 11-21z" fill="#5cc8ff" stroke="#bfe9ff" strokeWidth="2" />
+            </svg>
+          </div>
+        )}
+        <h1 className={'cel-title' + (pass ? '' : ' sad')}>{pass ? t('celTitle') : t('celFailTitle')}</h1>
+        {pass
+          ? <p className="cel-sub"><Icon name="ok" size={20} /> {t('celVocabDone')}</p>
+          : <p className="cel-sub"><Icon name="info" size={20} /> {t('celNeed')}: {min} / {total}</p>}
+        <p className="cel-msg">{pass ? t('celMotivation') : t('celFailMsg')}</p>
         <div className="cel-stats">
           <div><b>{total}</b><small>{t('totalWords')}</small></div>
           <div className="ok"><b>{correct}</b><small>{t('correctN')}</small></div>
           <div className="bad"><b>{bad}</b><small>{t('incorrectN')}</small></div>
         </div>
-        <button type="button" className="cel-btn" autoFocus onClick={onContinue}>{t('continueBtn')}</button>
+        <button type="button" className="cel-btn" autoFocus onClick={pass ? onContinue : onRetry}>{pass ? t('celContinue') : t('celRetry')}</button>
       </div>
     </div>
   );

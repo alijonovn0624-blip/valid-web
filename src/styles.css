@@ -974,3 +974,14 @@ html[data-theme="light"] .sh-game { color:#fff; }
 .gm-hub button svg { color:#f5b301; }
 .unl-list { display:grid; gap:8px; margin:8px 0; } .unl-row { display:flex; align-items:center; gap:10px; padding:8px 10px; border-radius:12px; border:1px solid var(--d-line); } .unl-row span { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .unl-row.on { border-color:#34d399; background:#34d3991a; }
+
+/* vocabulary result: sunburst background like the reference, sad sticker for a failed test */
+.cel { background:radial-gradient(120% 90% at 50% 30%, #1f3fbf 0%, #0f2178 50%, #070b2e 100%); }
+.cel-rays { position:absolute; left:-60%; right:-60%; top:-60%; bottom:-60%; background:repeating-conic-gradient(from 0deg at 50% 50%, #2a52d8 0 7deg, #1a36a0 7deg 14deg); opacity:.55; animation:celrays 80s linear infinite; mask-image:radial-gradient(circle at 50% 50%, #000 0, #0009 40%, transparent 70%); -webkit-mask-image:radial-gradient(circle at 50% 50%, #000 0, #0009 40%, transparent 70%); pointer-events:none; }
+@keyframes celrays { to { transform:rotate(360deg); } }
+.cel.fail { background:radial-gradient(120% 90% at 50% 30%, #2a2f6e 0%, #141a4f 50%, #080b2b 100%); } .cel.fail .cel-rays { opacity:.18; animation-duration:200s; }
+.cel-sad { animation:celsad 2.6s ease-in-out infinite; filter:drop-shadow(0 10px 26px #000a); } .cel-sad svg { display:block; }
+@keyframes celsad { 0%,100% { transform:translateY(0) rotate(-3deg); } 50% { transform:translateY(6px) rotate(3deg); } }
+.cel-tear { animation:celtear 2.2s ease-in infinite; transform-box:fill-box; transform-origin:50% 0; } @keyframes celtear { 0% { transform:translateY(-6px) scale(.6); opacity:0; } 25% { opacity:1; } 100% { transform:translateY(34px) scale(1); opacity:0; } }
+.cel-title.sad { background:linear-gradient(180deg,#5f6bd6,#3a43a8); box-shadow:0 8px 24px #2a2f8a66, inset 0 2px 0 #ffffff33; text-shadow:0 3px 0 #232a7a; }
+@media (prefers-reduced-motion: reduce) { .cel-rays, .cel-sad, .cel-tear { animation:none !important; } }

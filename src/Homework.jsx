@@ -330,6 +330,10 @@ const curLang = () => localStorage.getItem('lang') || 'uz';
 const tr = (w, k) => (w.translations && w.translations[k]) || (k === 'uz' ? w.translation : '') || '';
 const otherTrans = (w) => { const m = (w.translations) || {}; const cur = curLang(); const o = ['uz', 'ru'].filter((k) => k !== (m[cur] ? cur : 'uz') && m[k]).map((k) => m[k]); return o[0] || ''; };
 const trans = (w) => (w.translations && (w.translations[curLang()] || w.translations.uz || w.translations.ru)) || w.translation;
+// Vocabulary Test pass mark: share of the words that must be right on the FIRST try (about 10 of 15). Change it with VITE_VOCAB_PASS_PERCENT.
+const VOCAB_PASS_PERCENT = Number(import.meta.env.VITE_VOCAB_PASS_PERCENT) || 66.67;
+const minCorrect = (total) => Math.max(1, Math.min(total, Math.ceil((total * VOCAB_PASS_PERCENT) / 100 - 0.01)));
+const shuffle = (a) => { const b = [...a]; for (let i = b.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [b[i], b[j]] = [b[j], b[i]]; } return b; };
 const RewardBanner = ({ r }) => (r ? <div className="rewardbar"><Icon name="coins" size={18} /> {t('hwEarned')} <b>+{r.coins}</b> {t('coins')}{r.points ? <> · <Icon name="star" size={16} /> <b>+{r.points}</b> {t('points')}</> : null}</div> : null);
 
 export function SavedWords({ onClose }) {
@@ -522,13 +526,15 @@ function VocabFlow({ hw, onBack, onChanged }) {
   const [correct, setCorrect] = useState(new Set()); // words answered right in THIS attempt (every visit starts from the beginning)
   const [mode, setMode] = useState('all'); // all | fix (cue cards of the wrong words only)
   const [kind, setKind] = useState('first'); // first round | automatic retry of the wrong ones | fix round
-  const [cards, setCards] = useState(words);
+  const [deck, setDeck] = useState(() => shuffle(words)); // random order, fixed for this attempt; a new attempt shuffles again
+  const [cards, setCards] = useState(deck);
+  const [firstOk, setFirstOk] = useState(new Set()); // words right on the first try (decides the pass mark)
+  const [outcome, setOutcome] = useState(null); // null | { pass, ok, total, min }
   const [idx, setIdx] = useState(0);
-  const [testList, setTestList] = useState(words);
+  const [testList, setTestList] = useState(deck);
   const [cur, setCur] = useState(0);
   const [typed, setTyped] = useState('');
   const [fb, setFb] = useState(null); // null | 'ok' | 'bad'
-  const [cele, setCele] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const [saved, setSaved] = useState({});
@@ -538,8 +544,8 @@ function VocabFlow({ hw, onBack, onChanged }) {
   const step = (d) => { const n = idx + d; if (n < 0) return; if (n >= cards.length) { setPhase('review'); return; } setIdx(n); };
   const save = async (w) => { try { const r = await api(`/api/homework/${hw.id}/words/${w.id}/save`, { method: 'POST' }); setSaved((m) => ({ ...m, [w.id]: r.saved })); } catch {} };
   // words the server does not yet count as correct = the "mistakes" list (correct ones never come back)
-  const wrongWords = (set = correct) => words.filter((w) => !set.has(w.id));
-  const start = () => { if (mode === 'fix') { const todo = wrongWords(); setTestList(todo.length ? todo : words); setKind('fix'); } else { setTestList(words); setKind('first'); } setCur(0); setTyped(''); setFb(null); setErr(''); setPhase('test'); };
+  const wrongWords = (set = correct) => deck.filter((w) => !set.has(w.id));
+  const start = () => { if (mode === 'fix') { const todo = wrongWords(); setTestList(todo.length ? todo : deck); setKind('fix'); } else { setTestList(deck); setKind('first'); } setCur(0); setTyped(''); setFb(null); setErr(''); setPhase('test'); };
   const w = testList[cur];
   const c = cards[idx];
   const slots = w ? [...w.word] : [];
@@ -551,7 +557,7 @@ function VocabFlow({ hw, onBack, onChanged }) {
     if (busy || fb || !w || val.length < need) return; setBusy(true); setErr('');
     try {
       const r = await api(`/api/homework/${hw.id}/words/${w.id}/check`, { method: 'POST', body: { answer: givenOf(val) } });
-      if (r.correct) { setFb('ok'); setCorrect((x) => new Set([...x, w.id])); onChanged(); } else setFb('bad');
+      if (r.correct) { setFb('ok'); setCorrect((x) => new Set([...x, w.id])); if (kind === 'first') setFirstOk((x) => new Set([...x, w.id])); onChanged(); } else setFb('bad');
     } catch (x) { setErr(apiError(x)); }
     setBusy(false);
   };
@@ -560,17 +566,26 @@ function VocabFlow({ hw, onBack, onChanged }) {
     if (cur < testList.length - 1) { setCur(cur + 1); return; }
     const wrong = wrongWords();
     if (kind === 'first' && wrong.length) { setKind('retry'); setTestList(wrong); setCur(0); } // the wrong ones come back once, right after the first round
-    else setPhase('results');
+    else { setPhase('saving'); conclude(); }
   };
-  const fix = () => { const todo = wrongWords(); setMode('fix'); setCards(todo); setIdx(0); setPhase('cards'); };
-  const finish = async () => {
-    if (practice) { setCele(true); return; } // a repeat of a finished unit pays nothing and changes nothing
-    setBusy(true); setErr('');
-    try { await api(`/api/homework/${hw.id}/words/finish`, { method: 'POST' }); onChanged(); setCele(true); setBusy(false); }
-    catch (x) { setErr(apiError(x)); setBusy(false); }
+  // the test is over: check the pass mark, save the result, THEN show the final screen (no separate results screen any more)
+  const conclude = async () => {
+    const total = words.length, min = minCorrect(total), ok = words.filter((x) => firstOk.has(x.id)).length;
+    if (ok < min) { setOutcome({ pass: false, ok, total, min }); return; }
+    if (!practice) { // a repeat of a finished unit pays nothing and changes nothing
+      if (busy) return; setBusy(true); setErr('');
+      try { await api(`/api/homework/${hw.id}/words/finish`, { method: 'POST' }); onChanged(); }
+      catch (x) { setErr(apiError(x)); setBusy(false); return; }
+      setBusy(false);
+    }
+    setOutcome({ pass: true, ok, total, min });
+  };
+  const newAttempt = () => {
+    const d = shuffle(words); setDeck(d); setCards(d); setTestList(d); setCorrect(new Set()); setFirstOk(new Set());
+    setMode('all'); setKind('first'); setIdx(0); setCur(0); setTyped(''); setFb(null); setErr(''); setOutcome(null); setPhase('cards');
   };
   const nCorrect = words.filter((x) => correct.has(x.id)).length;
-  if (cele) return <VocabCelebration total={words.length} correct={nCorrect} onContinue={onBack} />;
+  if (outcome) return <VocabCelebration pass={outcome.pass} total={outcome.total} correct={outcome.ok} min={outcome.min} onContinue={onBack} onRetry={newAttempt} />;
   return (
     <div className="dcard">
       <div className="hwtop"><Back onClick={onBack} /><h3 className="hwtitle">{t('hwPartVocab')}</h3></div>
@@ -630,19 +645,9 @@ function VocabFlow({ hw, onBack, onChanged }) {
           {fb && <button type="button" className="mcqcont tw-next" autoFocus onClick={next}>{t('continueBtn')}</button>}
         </div>
       )}
-      {phase === 'results' && (
-        <div className="vend vresult">
-          <div className="dnote"><b>{nCorrect === words.length ? t('allCorrect') : t('wordsDone')}</b></div>
-          <div className="vstats">
-            <div><b>{words.length}</b><small>{t('totalWords')}</small></div>
-            <div className="ok"><b>{nCorrect}</b><small>{t('correctN')}</small></div>
-            <div className="bad"><b>{words.length - nCorrect}</b><small>{t('incorrectN')}</small></div>
-          </div>
-          {err && <div className="err">{err}</div>}
-          <div className="acts" style={{ justifyContent: 'center' }}>
-            {words.length - nCorrect > 0 && <button className="dbtn ghost" disabled={busy} onClick={fix}><Icon name="undo" size={16} /> {t('fixMistakes')}</button>}
-            <button className="dbtn startbtn" disabled={busy} onClick={finish}>{t('hwFinish')}</button>
-          </div>
+      {phase === 'saving' && (
+        <div className="vend">
+          {err ? <div className="err">{err} <button type="button" className="dbtn ghost" onClick={conclude}>{t('retry')}</button></div> : <p className="muted">{t('loading')}</p>}
         </div>
       )}
     </div>
