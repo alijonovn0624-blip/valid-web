@@ -89,7 +89,7 @@ export default function StudentHome({ user, nav, onHomework, StoryViewer }) {
     { k: 'achPerfect', icon: 'cap', on: !!sum && sum.perfect >= 3 },
     { k: 'achCoins', icon: 'target', on: (user.coins || 0) >= 100 },
   ];
-  const games = [['gWordMatch', 'gamepad', 'g1'], ['gQuickQuiz', 'gamepad', 'g2'], ['gScramble', 'gamepad', 'g3']];
+  const games = [['gWordMatch', 'gamepad', 'g1'], ['gQuickQuiz', 'gamepad', 'g2'], ['gScramble', 'gamepad', 'g3'], ['gMafia', 'users', 'g4']];
 
   return (
     <div className="sh">

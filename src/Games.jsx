@@ -3,6 +3,7 @@ import { api } from './api.js';
 import { t, apiError } from './i18n.js';
 import { Icon } from './icons.jsx';
 import { WordImg } from './WordPicture.jsx';
+import Mafia from './Mafia.jsx';
 
 // Three small games built from the student's own vocabulary (GET /api/homework/game-words).
 const shuffle = (a) => { const b = [...a]; for (let i = b.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [b[i], b[j]] = [b[j], b[i]]; } return b; };
@@ -110,14 +111,14 @@ function Scramble({ words, onBack }) {
 
 const GAMES = { gWordMatch: Match, gQuickQuiz: Quiz, gScramble: Scramble };
 
-export default function Games({ game, onBack, onPick, onVocab }) {
+function GamesInner({ game, onBack, onPick, onVocab }) {
   const key = GAMES[game] ? game : null;
   const [words, setWords] = useState(null); const [err, setErr] = useState('');
   useEffect(() => { if (!key) return; api('/api/homework/game-words').then((r) => setWords(r.words || [])).catch((e) => { setErr(apiError(e)); setWords([]); }); }, [key]);
   if (!key) return (
     <div className="dcard gm">
       <div className="hwtop"><h3 className="hwtitle">{t('gmPick')}</h3></div>
-      <div className="gm-hub">{[['gWordMatch', 'target'], ['gQuickQuiz', 'zap'], ['gScramble', 'shuffle']].map(([k, ic]) => <button key={k} type="button" onClick={() => onPick && onPick(k)}><Icon name={ic} size={34} />{t(k)}</button>)}</div>
+      <div className="gm-hub">{[['gWordMatch', 'target'], ['gQuickQuiz', 'zap'], ['gScramble', 'shuffle'], ['gMafia', 'users']].map(([k, ic]) => <button key={k} type="button" onClick={() => onPick && onPick(k)}><Icon name={ic} size={34} />{t(k)}</button>)}</div>
     </div>
   );
   const G = GAMES[key];
@@ -131,3 +132,5 @@ export default function Games({ game, onBack, onPick, onVocab }) {
     </div>
   );
 }
+
+export default function Games(props) { return props.game === 'gMafia' ? <Mafia onBack={props.onBack} /> : <GamesInner {...props} />; }

@@ -247,6 +247,61 @@ function HomeworkForm({ groups, onCreated }) {
   );
 }
 
+/* Admin: every unit that was created, with Edit and Delete */
+function UnitList({ groups, refreshKey, onChanged }) {
+  const [gid, setGid] = useState('');
+  const [rows, setRows] = useState(null);
+  const [err, setErr] = useState('');
+  const [ed, setEd] = useState(null);
+  const [unl, setUnl] = useState(null);
+  const [k, setK] = useState(0);
+  useEffect(() => { setRows(null); setErr(''); api('/api/homework' + (gid ? '?groupId=' + gid : '')).then(setRows).catch((x) => setErr(apiError(x))); }, [gid, k, refreshKey]);
+  const remove = async (w) => {
+    if (!confirm(`${w.unit || ''} ${w.title}\n${t('hwDeleteQ')}`)) return;
+    try { await api('/api/homework/' + w.id, { method: 'DELETE' }); }
+    catch (x) {
+      if (x.code === 'HAS_ANSWERS') { if (!confirm(t('hwDeleteForce'))) return; try { await api('/api/homework/' + w.id + '?force=1', { method: 'DELETE' }); } catch (y) { return setErr(apiError(y)); } }
+      else return setErr(apiError(x));
+    }
+    setK((n) => n + 1); onChanged && onChanged();
+  };
+  const save = async (e) => {
+    e.preventDefault(); setErr('');
+    try { await api('/api/homework/' + ed.id, { method: 'PUT', body: { title: ed.title, unitNo: Number(ed.unit_no), lessonNo: Number(ed.lesson_no), dueDate: ed.due_date, description: ed.description || '' } }); setEd(null); setK((n) => n + 1); onChanged && onChanged(); }
+    catch (x) { setErr(apiError(x)); }
+  };
+  return (
+    <div className="dcard">
+      <h3><Icon name="homework" size={20} /> {t('hwUnitsTitle')}</h3>
+      <div className="dtools"><select value={gid} onChange={(e) => setGid(e.target.value)} aria-label={t('group')}><option value="">{t('allGroups')}</option>{groups.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}</select></div>
+      {err && <div className="err">{err}</div>}
+      {!rows && !err && <p className="muted">{t('loading')}</p>}
+      {rows && rows.length === 0 && <p className="muted">{t('noHomework')}</p>}
+      {rows && rows.map((w) => (
+        <div key={w.id} className="unitrow">
+          <div className="unitinfo"><b>{w.unit || '—'} · {w.title}</b><small className="muted">{w.group_name} · {w.due_date} · {w.word_count} {t('hwPartVocab')} · {w.exercise_count} {t('hwTasks')}</small></div>
+          <span className="acts"><button type="button" className="dbtn ghost" onClick={() => setUnl(w)}><Icon name="key" size={15} /> {t('hwUnlockTitle')}</button><button type="button" className="dbtn ghost" onClick={() => setEd({ ...w })}><Icon name="edit" size={15} /> {t('edit')}</button>
+            <button type="button" className="dbtn danger" onClick={() => remove(w)}><Icon name="trash" size={15} /> {t('remove')}</button></span>
+        </div>
+      ))}
+      {unl && <Modal title={`${unl.unit || ''} · ${t('hwUnlockTitle')}`} onClose={() => setUnl(null)}><UnlockPanel id={unl.id} /></Modal>}
+      {ed && (
+        <Modal title={`${t('edit')} · ${ed.unit || ''}`} onClose={() => setEd(null)}>
+          <form onSubmit={save} className="gfgrid">
+            <label>{t('hwUnitNo')}<select value={ed.unit_no || ''} onChange={(e) => setEd({ ...ed, unit_no: e.target.value })} required>{Array.from({ length: 12 }, (_, i) => <option key={i + 1} value={i + 1}>{t('unitWord')} {i + 1}</option>)}</select></label>
+            <label>{t('hwLessonNo')}<select value={ed.lesson_no || ''} onChange={(e) => setEd({ ...ed, lesson_no: e.target.value })} required>{[1, 2, 3].map((n) => <option key={n} value={n}>{n}</option>)}</select></label>
+            <label className="wide">{t('hwTitle')}<input type="text" value={ed.title} maxLength={120} onChange={(e) => setEd({ ...ed, title: e.target.value })} required /></label>
+            <label>{t('hwLessonDate')}<input type="date" value={ed.due_date} onChange={(e) => setEd({ ...ed, due_date: e.target.value })} required /></label>
+            <label className="wide">{t('hwDescription')}<input type="text" value={ed.description || ''} maxLength={500} onChange={(e) => setEd({ ...ed, description: e.target.value })} /></label>
+            {err && <div className="err wide">{err}</div>}
+            <span className="acts wide"><button type="submit" className="dbtn">{t('save')}</button><button type="button" className="dbtn ghost" onClick={() => setEd(null)}>{t('cancel')}</button></span>
+          </form>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
 export function HomeworkStaff({ isAdmin, groups, onOpen }) {
   const [msg, setMsg] = useState('');
   const [k, setK] = useState(0);
@@ -254,6 +309,7 @@ export function HomeworkStaff({ isAdmin, groups, onOpen }) {
     <>
       {isAdmin && <HomeworkForm groups={groups} onCreated={() => { setMsg(t('hwCreated')); setK((x) => x + 1); }} />}
       {msg && <div className="dnote">{msg}</div>}
+      {isAdmin && <UnitList groups={groups} refreshKey={k} onChanged={() => setK((x) => x + 1)} />}
       <HomeworkMatrix key={k} groups={groups} isAdmin={isAdmin} onOpen={onOpen} />
     </>
   );
@@ -330,8 +386,8 @@ const curLang = () => localStorage.getItem('lang') || 'uz';
 const tr = (w, k) => (w.translations && w.translations[k]) || (k === 'uz' ? w.translation : '') || '';
 const otherTrans = (w) => { const m = (w.translations) || {}; const cur = curLang(); const o = ['uz', 'ru'].filter((k) => k !== (m[cur] ? cur : 'uz') && m[k]).map((k) => m[k]); return o[0] || ''; };
 const trans = (w) => (w.translations && (w.translations[curLang()] || w.translations.uz || w.translations.ru)) || w.translation;
-// Vocabulary Test pass mark: share of the words that must be right on the FIRST try (about 10 of 15). Change it with VITE_VOCAB_PASS_PERCENT.
-const VOCAB_PASS_PERCENT = Number(import.meta.env.VITE_VOCAB_PASS_PERCENT) || 66.67;
+// Vocabulary Test pass mark: share of the words that must be right on the FIRST try (13 of 15). Change it with VITE_VOCAB_PASS_PERCENT.
+const VOCAB_PASS_PERCENT = Number(import.meta.env.VITE_VOCAB_PASS_PERCENT) || 86.67;
 const minCorrect = (total) => Math.max(1, Math.min(total, Math.ceil((total * VOCAB_PASS_PERCENT) / 100 - 0.01)));
 const shuffle = (a) => { const b = [...a]; for (let i = b.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [b[i], b[j]] = [b[j], b[i]]; } return b; };
 const RewardBanner = ({ r }) => (r ? <div className="rewardbar"><Icon name="coins" size={18} /> {t('hwEarned')} <b>+{r.coins}</b> {t('coins')}{r.points ? <> · <Icon name="star" size={16} /> <b>+{r.points}</b> {t('points')}</> : null}</div> : null);
@@ -357,7 +413,6 @@ function AnswerInput({ e, val, setVal, disabled, onEnter, picked, setPicked }) {
       <div className="hworder">
         <div className="hwline">{picked.length === 0 ? <span className="muted">{t('hwTapWords')}</span> : picked.map((ix, k) => <button key={k} type="button" disabled={disabled} className="tok on" onClick={() => setPicked(picked.filter((_, m) => m !== k))}>{e.options[ix]}</button>)}</div>
         <div className="hwbank">{e.options.map((o, ix) => <button key={ix} type="button" disabled={disabled || picked.includes(ix)} className="tok" onClick={() => setPicked([...picked, ix])}>{o}</button>)}</div>
-        {picked.length > 0 && !disabled && <button type="button" className="dbtn ghost" onClick={() => setPicked([])}>{t('hwReset')}</button>}
       </div>
     );
   }
@@ -372,7 +427,7 @@ function AnswerInput({ e, val, setVal, disabled, onEnter, picked, setPicked }) {
 }
 
 function Runner({ hw, onBack, onChanged }) {
-  const all = hw.exercises;
+  const [all] = useState(() => shuffle(hw.exercises)); // always a new random order when the student opens the exercises
   const [ans, setAns] = useState(() => { const m = {}; hw.mine.answers.forEach((a) => { m[a.exercise_id] = a; }); return m; });
   const [keys, setKeys] = useState(hw.mine.keys_left);
   const [draft, setDraft] = useState({});   // exercise id -> { val, picked }
@@ -386,13 +441,13 @@ function Runner({ hw, onBack, onChanged }) {
   const [report, setReport] = useState(null); // { ok, bad, wrong } after "Check answers"
   const [done, setDone] = useState(false);    // congratulations screen
   const [first, setFirst] = useState(null);     // result of the first check (for the final statistics)
-  const [practice, setPractice] = useState(false); // repeating a finished unit: the server pays nothing and changes nothing
+  const [practice, setPractice] = useState(() => hw.exercises.length > 0 && hw.exercises.every((x) => hw.mine.answers.some((a) => a.exercise_id === x.id && (a.is_correct || a.used_key)))); // reopening a finished unit = practice, like the vocabulary test // repeating a finished unit: the server pays nothing and changes nothing
   const ex = queue ? all.filter((x) => queue.includes(x.id)) : all;
   const isClean = (x) => !!(ans[x.id] && ans[x.id].is_correct);
   const isKeyed = (x) => !!(ans[x.id] && ans[x.id].used_key);
   const isDone = (x) => isClean(x) || isKeyed(x);
   const settled = (x) => !practice && isDone(x); // in practice mode every exercise is open again
-  const [i, setI] = useState(() => { const k = all.findIndex((x) => !(hw.mine.answers.find((a) => a.exercise_id === x.id && (a.is_correct || a.used_key)))); return k < 0 ? 0 : k; });
+  const [i, setI] = useState(() => { if (practice) return 0; const k = all.findIndex((x) => !(hw.mine.answers.find((a) => a.exercise_id === x.id && (a.is_correct || a.used_key)))); return k < 0 ? 0 : k; });
   const e = ex[i];
   const d = (e && draft[e.id]) || { val: '', picked: [] };
   const setVal = (v) => setDraft((m) => ({ ...m, [e.id]: { val: v, picked: [] } }));
@@ -467,7 +522,6 @@ function Runner({ hw, onBack, onChanged }) {
       <div className="hwtop"><Back onClick={onBack} />
         <button type="button" className="keychip click" onClick={() => setKeyDlg(true)} title={t('hwKeys')} aria-label={t('hwUseKeyTitle')}><Icon name="key" size={18} /> {keys}</button></div>
       <RewardBanner r={reward} />
-      {finished && !practice && !queue && <div className="dnote"><b>{t('hwFinished')}</b> · {t('hwResult')}: {Math.round((okCount / all.length) * 100)}% <button type="button" className="dbtn ghost" style={{ marginLeft: 10 }} onClick={again}><Icon name="undo" size={15} /> {t('practiceAgain')}</button></div>}
       {practice && !queue && <div className="dnote"><Icon name="info" size={15} /> {t('practiceNote')}</div>}
       {queue && <div className="dnote"><Icon name="info" size={15} /> {t('hwMistakesRound')}: <b>{queue.length}</b></div>}
       {e && (
