@@ -1,0 +1,10 @@
+{
+  "appId": "uz.valid.deducation",
+  "appName": "D-Education",
+  "webDir": "www",
+  "server": {
+    "url": "https://SIZNING-SAYT.netlify.app",
+    "cleartext": false
+  },
+  "android": { "allowMixedContent": false }
+}

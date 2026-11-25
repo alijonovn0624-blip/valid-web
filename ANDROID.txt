@@ -1,0 +1,6 @@
+ANDROID APP (bepul, $0)
+1) GitHub repo valid-web > Settings > Secrets and variables > Actions > Variables > New: SITE_URL = https://SIZNING-SAYT.netlify.app
+2) public/download.html ichida REPO = "github-nomingiz/valid-web" ni yozing.
+3) GitHub > Actions > "Build Android APK" > Run workflow (~6-8 daqiqa). Tugagach Releases ichida D-Education.apk paydo bo'ladi.
+4) Sayt/download sahifasi: https://SIZNING-SAYT/download
+Ilova saytni ichida ochadi, shuning uchun sayt yangilansa APK qayta qurilmaydi.
