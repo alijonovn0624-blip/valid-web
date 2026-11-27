@@ -1042,3 +1042,7 @@ html[data-theme="light"] .sh-game { color:#fff; }
 .mf-win { padding-top:8px; } .mf-trophy { font-size:80px; filter:drop-shadow(0 0 24px #ffd24a); animation:mffloat 3s ease-in-out infinite; } .mf-ribbon { display:inline-block; padding:12px 42px; font-size:32px; font-weight:900; border-radius:10px; background:linear-gradient(135deg,#8b5cf6,#4f7cff); box-shadow:0 8px 30px #6d4df288; margin:4px 0 8px; } .mf-win.mafia .mf-ribbon { background:linear-gradient(135deg,#be123c,#7c3aed); }
 .mf-stats { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; max-width:560px; margin:14px auto; } .mf-stats div { background:#0d1050cc; border:1px solid #8b5cf655; border-radius:16px; padding:12px 6px; } .mf-stats b { display:block; font-size:20px; } .mf-stats small { color:#b6bdf5; }
 @media (max-width:480px) { .mf-brand { font-size:15px; } .mf-musicbtn { font-size:12px; padding:6px 8px; } .mf-moon { width:64px; height:64px; } .mf h2 { font-size:22px; } .mf-ribbon { font-size:24px; padding:10px 24px; } }
+
+/* every modal has a Back button at the top */
+.dmodal .mback{display:inline-flex;align-items:center;gap:6px;background:none;border:0;padding:4px 8px 4px 0;margin:0 0 6px;color:var(--muted,#667);font:inherit;font-size:.9rem;cursor:pointer}
+.dmodal .mback:hover{color:inherit}

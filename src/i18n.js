@@ -505,6 +505,9 @@ const D = {
   nextLessonIn: ['Next lesson', 'Keyingi dars', 'Следующий урок'],
   unitLockedTitle: ['Unit is locked', 'Unit yopiq', 'Юнит закрыт'],
   opensOn: ['Opens on', 'Ochiladi', 'Откроется'],
+  prevUnitTitle: ['Finish the previous unit first', "Avval oldingi unitni tugating", 'Сначала завершите предыдущий юнит', 'Önce önceki üniteyi bitirin', '请先完成上一单元'],
+  prevUnitNote: ['{unit} {title} is at {pct}%. Raise it to {need}% to open this unit.', "{unit} {title} hozir {pct}%. Bu unit ochilishi uchun uni {need}% ga yetkazing.", '{unit} {title}: {pct}%. Доведите до {need}%, чтобы открыть этот юнит.', '{unit} {title} şu an %{pct}. Bu üniteyi açmak için %{need} yapın.', '{unit} {title} 当前 {pct}%，达到 {need}% 后才能开启本单元。'],
+  hwEditKeepNote: ['Words and exercises that stay keep the students\' progress; removed ones are deleted with their results.', "Qolgan so'z va mashqlar talabalar natijasini saqlaydi; o'chirilganlari natijalari bilan o'chadi.", 'Оставшиеся слова и упражнения сохраняют прогресс; удалённые удаляются с результатами.', 'Kalanlar ilerlemeyi korur; silinenler sonuçlarıyla silinir.', '保留的内容会保留学生进度；删除的内容连同成绩一起删除。'],
   opensAfterLesson: ['It opens when this lesson ends.', 'Bu dars tugagandan keyin ochiladi.', 'Откроется после окончания этого урока.'],
   lockedInLesson: ['Locked while the offline lesson is running.', 'Oflayn dars paytida yopiq.', 'Закрыто на время очного урока.'],
   notPublished: ['Not published yet', "Hali joylanmagan", 'Пока не опубликован'],
@@ -654,7 +657,7 @@ export const t = (k) => { const a = D[k]; return a ? (a[IDX[current]] || a[0]) :
 
 const ERR = {
   EMAIL_EXISTS: 'emailExists', CODE_EXPIRED: 'codeExpired', BAD_CODE: 'badCode', BAD_CREDENTIALS: 'badCreds',
-  THROTTLED: 'throttled', LESSON_LOCKED: 'lockedInLesson', NOT_YET_OPEN: 'opensAfterLesson', GROUP_EXISTS: 'groupExists', GROUP_HAS_DATA: 'deleteBlocked', GROUP_ARCHIVED: 'groupArchivedErr', PROMO_INVALID: 'promoInvalid', DUPLICATE_UNIT: 'hwDupUnit', REJECTED: 'rejectedMsg', EMAIL_FAILED: 'codeNotSent',
+  THROTTLED: 'throttled', LESSON_LOCKED: 'lockedInLesson', NOT_YET_OPEN: 'opensAfterLesson', PREV_UNIT: 'prevUnitTitle', WORD_IN_USE: 'hwEditKeepNote', GROUP_EXISTS: 'groupExists', GROUP_HAS_DATA: 'deleteBlocked', GROUP_ARCHIVED: 'groupArchivedErr', PROMO_INVALID: 'promoInvalid', DUPLICATE_UNIT: 'hwDupUnit', REJECTED: 'rejectedMsg', EMAIL_FAILED: 'codeNotSent',
 };
 // Backend xatosini tanlangan tilda ko'rsatadi (kod bo'lmasa — backend matni)
 export const apiError = (x) => (ERR[x.code] ? t(ERR[x.code]) : x.message);

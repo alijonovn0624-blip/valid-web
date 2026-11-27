@@ -13,6 +13,7 @@ export function Modal({ title, children, onClose }) {
   return (
     <div className="dscrim modalwrap" onClick={onClose}>
       <div className="dmodal" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
+        <button type="button" className="mback" onClick={onClose}><Icon name="back" size={16} /> {t('back')}</button>
         <h3>{title}</h3>{children}
       </div>
     </div>

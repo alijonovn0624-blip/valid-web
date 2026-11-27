@@ -253,6 +253,8 @@ function UnitList({ groups, refreshKey, onChanged }) {
   const [rows, setRows] = useState(null);
   const [err, setErr] = useState('');
   const [ed, setEd] = useState(null);
+  const [edW, setEdW] = useState(null); // vocabulary words of the unit being edited
+  const [edX, setEdX] = useState(null); // exercises of the unit being edited
   const [unl, setUnl] = useState(null);
   const [k, setK] = useState(0);
   useEffect(() => { setRows(null); setErr(''); api('/api/homework' + (gid ? '?groupId=' + gid : '')).then(setRows).catch((x) => setErr(apiError(x))); }, [gid, k, refreshKey]);
@@ -265,9 +267,30 @@ function UnitList({ groups, refreshKey, onChanged }) {
     }
     setK((n) => n + 1); onChanged && onChanged();
   };
+  const openEdit = async (w) => {
+    setErr(''); setEd({ ...w }); setEdW(null); setEdX(null);
+    try {
+      const d = await api('/api/homework/' + w.id);
+      setEdW(d.words.map((x) => ({ id: x.id, word: x.word, uz: (x.translations && x.translations.uz) || '', ru: (x.translations && x.translations.ru) || '', definition: x.definition || '', example: x.example || '', imageUrl: x.image_url || '', imageCredit: x.image_credit || '', imageProvider: x.image_provider || '', imageRef: x.image_ref || '', phonetic: x.phonetic || '', pos: x.pos || '', imageChanged: false })));
+      setEdX(d.exercises.map((x) => (x.kind === 'choice'
+        ? { id: x.id, kind: 'choice', instruction: '', question: x.question, options: x.options || ['', ''], correct: Math.max(0, (x.options || []).findIndex((o) => String(o).trim().toLowerCase() === String(x.answer).trim().toLowerCase())), answer: '' }
+        : { id: x.id, kind: x.kind, instruction: x.instruction || '', question: x.kind === 'order' ? '' : x.question, options: ['', '', ''], correct: 0, answer: x.answer || '' })));
+    } catch (x) { setErr(apiError(x)); }
+  };
+  const setEdEx = (i, patch) => setEdX((l) => l.map((x, j) => (j === i ? { ...x, ...patch } : x)));
+  const setEdWd = (i, patch) => setEdW((l) => l.map((x, j) => (j === i ? { ...x, ...patch } : x)));
   const save = async (e) => {
     e.preventDefault(); setErr('');
-    try { await api('/api/homework/' + ed.id, { method: 'PUT', body: { title: ed.title, unitNo: Number(ed.unit_no), lessonNo: Number(ed.lesson_no), dueDate: ed.due_date, description: ed.description || '' } }); setEd(null); setK((n) => n + 1); onChanged && onChanged(); }
+    const body = { title: ed.title, unitNo: Number(ed.unit_no), lessonNo: Number(ed.lesson_no), dueDate: ed.due_date, description: ed.description || '' };
+    if (edX && edW) {
+      const bi = edX.findIndex((x) => (x.kind === 'gapfill' || x.kind === 'complete') && !String(x.instruction || '').trim());
+      if (bi >= 0) return setErr(`${bi + 1}. ${t('hwInstrMissing')}`);
+      body.exercises = edX.map((x) => (x.kind === 'choice'
+        ? { id: x.id, kind: 'choice', question: x.question, options: x.options.filter((o) => o.trim()), answer: x.options[x.correct] || '' }
+        : { id: x.id, kind: x.kind, question: x.question, answer: x.answer, instruction: (x.kind === 'gapfill' || x.kind === 'complete') ? x.instruction : undefined }));
+      body.words = edW.filter((w) => w.word.trim()).map((w) => ({ id: w.id, word: w.word, definition: w.definition, example: w.example, phonetic: w.phonetic || undefined, pos: w.pos || undefined, translations: { uz: w.uz, ru: w.ru }, imageChanged: w.imageChanged || undefined, imageUrl: w.imageUrl || undefined, imageCredit: w.imageCredit || undefined, imageProvider: w.imageProvider || undefined, imageRef: w.imageRef || undefined }));
+    }
+    try { await api('/api/homework/' + ed.id, { method: 'PUT', body }); setEd(null); setK((n) => n + 1); onChanged && onChanged(); }
     catch (x) { setErr(apiError(x)); }
   };
   return (
@@ -280,7 +303,7 @@ function UnitList({ groups, refreshKey, onChanged }) {
       {rows && rows.map((w) => (
         <div key={w.id} className="unitrow">
           <div className="unitinfo"><b>{w.unit || '—'} · {w.title}</b><small className="muted">{w.group_name} · {w.due_date} · {w.word_count} {t('hwPartVocab')} · {w.exercise_count} {t('hwTasks')}</small></div>
-          <span className="acts"><button type="button" className="dbtn ghost" onClick={() => setUnl(w)}><Icon name="key" size={15} /> {t('hwUnlockTitle')}</button><button type="button" className="dbtn ghost" onClick={() => setEd({ ...w })}><Icon name="edit" size={15} /> {t('edit')}</button>
+          <span className="acts"><button type="button" className="dbtn ghost" onClick={() => setUnl(w)}><Icon name="key" size={15} /> {t('hwUnlockTitle')}</button><button type="button" className="dbtn ghost" onClick={() => openEdit(w)}><Icon name="edit" size={15} /> {t('edit')}</button>
             <button type="button" className="dbtn danger" onClick={() => remove(w)}><Icon name="trash" size={15} /> {t('remove')}</button></span>
         </div>
       ))}
@@ -293,8 +316,36 @@ function UnitList({ groups, refreshKey, onChanged }) {
             <label className="wide">{t('hwTitle')}<input type="text" value={ed.title} maxLength={120} onChange={(e) => setEd({ ...ed, title: e.target.value })} required /></label>
             <label>{t('hwLessonDate')}<input type="date" value={ed.due_date} onChange={(e) => setEd({ ...ed, due_date: e.target.value })} required /></label>
             <label className="wide">{t('hwDescription')}<input type="text" value={ed.description || ''} maxLength={500} onChange={(e) => setEd({ ...ed, description: e.target.value })} /></label>
+            {!edW && !err && <p className="muted wide">{t('loading')}</p>}
+            {edW && (
+              <div className="wide">
+                <h4>1. {t('hwPartVocab')} <small className="muted">({edW.length})</small></h4>
+                {edW.map((w, i) => (
+                  <div key={w.id || 'n' + i} className="hwwordcard">
+                    <div className="dtools">
+                      <input type="text" value={w.word} placeholder={t('hwEnglishWord')} maxLength={100} onChange={(e) => setEdWd(i, { word: e.target.value })} />
+                      <button type="button" className="dbtn ghost" onClick={() => setEdW((l) => l.filter((_, j) => j !== i))} aria-label={t('remove')}><Icon name="trash" size={15} /></button>
+                    </div>
+                    <div className="hwwordbody">
+                      <div className="wpicwrap"><WordPicture word={w.word} value={w} onChange={(p) => setEdWd(i, { ...p, imageChanged: true })} onUpload={async (file) => (await upload(file)).url} /></div>
+                      <div className="wfields">
+                        <input type="text" value={w.uz} placeholder={t('hwUz')} maxLength={200} onChange={(e) => setEdWd(i, { uz: e.target.value })} />
+                        <input type="text" value={w.ru} placeholder={t('hwRu')} maxLength={200} onChange={(e) => setEdWd(i, { ru: e.target.value })} />
+                        <input type="text" value={w.definition} placeholder={t('hwDefinition')} maxLength={300} onChange={(e) => setEdWd(i, { definition: e.target.value })} />
+                        <input type="text" value={w.example} placeholder={t('hwExample')} maxLength={300} onChange={(e) => setEdWd(i, { example: e.target.value })} />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+                <div><button type="button" className="dbtn ghost" onClick={() => setEdW((l) => [...l, emptyWord()])}><Icon name="plus" size={15} /> {t('hwAddWord')}</button></div>
+                <h4>3. {t('hwExercises')} <small className="muted">({edX.length})</small></h4>
+                {edX.map((x, i) => <ExerciseEditor key={x.id || 'n' + i} x={x} i={i} setEx={setEdEx} remove={(k) => setEdX((l) => l.filter((_, j) => j !== k))} />)}
+                <div className="acts"><button type="button" className="dbtn ghost" onClick={() => setEdX((l) => [...l, emptyEx()])}><Icon name="plus" size={15} /> {t('hwAddEx')}</button></div>
+                <p className="muted small">{t('hwEditKeepNote')}</p>
+              </div>
+            )}
             {err && <div className="err wide">{err}</div>}
-            <span className="acts wide"><button type="submit" className="dbtn">{t('save')}</button><button type="button" className="dbtn ghost" onClick={() => setEd(null)}>{t('cancel')}</button></span>
+            <span className="acts wide"><button type="submit" className="dbtn" disabled={!edW}>{t('save')}</button><button type="button" className="dbtn ghost" onClick={() => setEd(null)}>{t('cancel')}</button></span>
           </form>
         </Modal>
       )}
@@ -740,7 +791,7 @@ const overallPct = (hw) => {
   if (!den) return 0;
   const okW = hw.mine.words.filter((x) => x.correct).length, okE = hw.mine.answers.filter((a) => a.is_correct).length;
   const videoDone = hw.mine.parts.some((p) => p.part === 'video');
-  return Math.round((100 * ((ex ? (60 * okE) / hw.exercises.length : 0) + (wv ? (20 * okW) / hw.words.length : 0) + (vd && videoDone ? 20 : 0))) / den);
+  return Math.floor((100 * ((ex ? (60 * okE) / hw.exercises.length : 0) + (wv ? (20 * okW) / hw.words.length : 0) + (vd && videoDone ? 20 : 0))) / den);
 };
 
 function Unit({ id, onBack, onListChanged }) {
@@ -776,9 +827,9 @@ function Unit({ id, onBack, onListChanged }) {
         <span className="hwicons"><span className="keychip" title={t('hwKeys')}><Icon name="key" size={18} /> {hw.mine.keys_left}</span>
           <button type="button" className="gbtn" onClick={() => setSaved(true)} aria-label={t('hwSaved')}><Icon name="bookmark" size={20} /></button></span></div>
       {hw.unit && <p className="muted">{hw.title}</p>}
-      <Card icon="star" title={`1. ${t('hwPartVocab')}`} sub={`${hw.words.length} ${t('hwWords')}`} pct={hw.words.length ? Math.round((okWords / hw.words.length) * 100) : 0} partKey="vocab" off={hw.words.length === 0} coins={R.vocab} onClick={() => setSub('vocab')} />
+      <Card icon="star" title={`1. ${t('hwPartVocab')}`} sub={`${hw.words.length} ${t('hwWords')}`} pct={hw.words.length ? Math.floor((okWords / hw.words.length) * 100) : 0} partKey="vocab" off={hw.words.length === 0} coins={R.vocab} onClick={() => setSub('vocab')} />
       <Card icon="play" title={`2. ${t('hwPartVideo')}`} sub={t('hwWatchAll')} pct={null} partKey="video" off={!hw.video_url} locked={!U.video} why={t('hwLockedVocab')} coins={R.video} onClick={() => setSub('video')} />
-      <Card icon="homework" title={`3. ${t('hwExercises')}`} sub={`${hw.exercises.length} ${t('hwTasks')}`} pct={hw.exercises.length ? Math.round((okEx / hw.exercises.length) * 100) : 0} partKey="exercises" off={hw.exercises.length === 0} locked={!U.exercises} why={hw.video_url ? t('hwLockedVideo') : t('hwLockedVocab')} coins={R.exercises} onClick={() => setSub('run')} />
+      <Card icon="homework" title={`3. ${t('hwExercises')}`} sub={`${hw.exercises.length} ${t('hwTasks')}`} pct={hw.exercises.length ? Math.floor((okEx / hw.exercises.length) * 100) : 0} partKey="exercises" off={hw.exercises.length === 0} locked={!U.exercises} why={hw.video_url ? t('hwLockedVideo') : t('hwLockedVocab')} coins={R.exercises} onClick={() => setSub('run')} />
       {saved && <SavedWords onClose={() => setSaved(false)} />}
     </>
   );
@@ -811,7 +862,13 @@ function LockInfo({ it, nowMs, onClose }) {
     <Modal title={<span className="ico-inline"><Icon name="lock" size={18} /> {title}</span>} onClose={onClose}>
       {s.state === 'exam' && <p>{t('examLockedNote')}</p>}
       {s.state === 'empty' && <><p><b>{t('notPublished')}</b></p><p className="muted">{t('notPublishedNote')}</p></>}
-      {(s.state === 'locked' || s.state === 'live') && (
+      {s.state === 'locked' && s.reason === 'prev_unit' && (
+        <>
+          <p><b>{t('prevUnitTitle')}</b></p>
+          <p className="muted">{t('prevUnitNote').replace('{unit}', h.prev_unit || '').replace('{title}', h.prev_title || '').replace('{pct}', h.prev_pct ?? 0).replace('{need}', h.need_pct ?? 70)}</p>
+        </>
+      )}
+      {(s.state === 'locked' || s.state === 'live') && s.reason !== 'prev_unit' && (
         <>
           <p className="lockwhen"><span className="muted small">{t('opensOn')}</span><b>{fmtWhen(h.opens_at)}</b></p>
           <p className="lockwhen"><span className="muted small">{t('opensIn')}</span><b className="lockcount">{fmtCountdown(s.remaining)}</b></p>
